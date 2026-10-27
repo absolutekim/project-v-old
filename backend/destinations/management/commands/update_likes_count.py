@@ -3,35 +3,35 @@ from django.db.models import Count
 from destinations.models import Location
 
 class Command(BaseCommand):
-    help = '기존 좋아요 데이터를 기반으로 Location 모델의 likes_count 필드를 업데이트합니다.'
+    help = 'Update the likes_count field of the Location model based on existing like data.'
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.SUCCESS('좋아요 수 업데이트를 시작합니다...'))
+        self.stdout.write(self.style.SUCCESS('Starting to update likes_count...'))
         
-        # 모든 여행지의 likes_count를 0으로 초기화
+        # Reset all locations' likes_count to 0
         Location.objects.all().update(likes_count=0)
-        self.stdout.write('모든 여행지의 likes_count를 0으로 초기화했습니다.')
+        self.stdout.write('All locations have been reset to 0 likes_count.')
         
-        # 각 여행지의 좋아요 수를 계산
+        # Calculate the likes_count for each location
         locations_with_counts = Location.objects.annotate(count=Count('likes'))
         
-        # 업데이트 카운터
+        # Update counter
         updated = 0
         
-        # 각 여행지의 likes_count 필드 업데이트
+        # Update the likes_count field for each location
         for location in locations_with_counts:
-            # 이상치 확인 및 로깅
-            if location.count > 100:  # 100개 이상의 좋아요는 의심스러움
+            # Check for outliers and log them
+            if location.count > 100:  # More than 100 likes are suspicious
                 self.stdout.write(self.style.WARNING(
-                    f'주의: {location.name}(ID: {location.id})의 좋아요 수가 비정상적으로 많습니다: {location.count}'
+                    f'Warning: {location.name}(ID: {location.id}) has an unusually high number of likes: {location.count}'
                 ))
             
             location.likes_count = location.count
             location.save(update_fields=['likes_count'])
             updated += 1
             
-            # 진행 상황 출력 (100개마다)
+            # Output progress (every 100 locations)
             if updated % 100 == 0:
-                self.stdout.write(f"{updated}개의 여행지 업데이트 완료...")
+                self.stdout.write(f"{updated} locations updated...")
         
-        self.stdout.write(self.style.SUCCESS(f"총 {updated}개의 여행지의 좋아요 수가 업데이트되었습니다.")) 
+        self.stdout.write(self.style.SUCCESS(f"Total {updated} locations have been updated.")) 

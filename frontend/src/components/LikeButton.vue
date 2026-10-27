@@ -1,4 +1,5 @@
 <template>
+  <!-- Like button component with toggle functionality -->
   <div class="like-button-container">
     <button 
       @click="toggleLike" 
@@ -6,7 +7,7 @@
       :disabled="isLoading"
     >
       <i :class="['fas', isLiked ? 'fa-heart' : 'fa-heart-o']"></i>
-      <span>{{ isLiked ? '좋아요 취소' : '좋아요' }}</span>
+      <span>{{ isLiked ? 'Unlike' : 'Like' }}</span>
     </button>
   </div>
 </template>
@@ -15,6 +16,10 @@
 import axios from 'axios';
 import { useToast } from 'vue-toastification';
 
+/**
+ * Like button component for destinations
+ * Allows users to like/unlike travel destinations
+ */
 export default {
   name: 'LikeButton',
   props: {
@@ -38,25 +43,38 @@ export default {
     return { toast };
   },
   watch: {
-    // 부모 컴포넌트에서 initialLiked가 변경되면 isLiked 업데이트
+    // Update isLiked when initialLiked changes from parent component
     initialLiked: {
       immediate: true,
       handler(newValue) {
-        console.log('initialLiked 변경됨:', newValue);
         this.isLiked = newValue;
       }
     }
   },
   methods: {
+    /**
+     * Check if user is authenticated
+     * @returns {boolean} Authentication status
+     */
     isAuthenticated() {
       return !!localStorage.getItem('access_token');
     },
+    
+    /**
+     * Get JWT token from local storage
+     * @returns {string} JWT access token
+     */
     getToken() {
       return localStorage.getItem('access_token');
     },
+    
+    /**
+     * Toggle like status for the location
+     * Handles both liking and unliking a destination
+     */
     async toggleLike() {
       if (!this.isAuthenticated()) {
-        this.toast.warning('로그인이 필요한 기능입니다.');
+        this.toast.warning('Need to login');
         this.$router.push('/login');
         return;
       }
@@ -65,7 +83,7 @@ export default {
 
       try {
         if (this.isLiked) {
-          // 좋아요 취소
+          // Unlike the location
           await axios.delete(`http://localhost:8000/api/destinations/likes/unlike/`, {
             params: { location_id: this.locationId },
             headers: {
@@ -73,9 +91,9 @@ export default {
             }
           });
           this.isLiked = false;
-          this.toast.success('좋아요가 취소되었습니다.');
+          this.toast.success('Liked removed');
         } else {
-          // 좋아요 추가
+          // Like the location
           try {
             await axios.post(`http://localhost:8000/api/destinations/likes/`, 
               { location_id: this.locationId },
@@ -86,27 +104,27 @@ export default {
               }
             );
             this.isLiked = true;
-            this.toast.success('좋아요가 추가되었습니다.');
+            this.toast.success('Liked added');
           } catch (error) {
-            // 이미 좋아요한 경우 (409 Conflict)
+            // Handle conflict if already liked (409 Conflict)
             if (error.response && error.response.status === 409) {
-              this.isLiked = true; // 이미 좋아요 상태로 설정
-              this.toast.info('이미 좋아요한 여행지입니다.');
+              this.isLiked = true; // Set to liked state anyway
+              this.toast.info('Already liked');
             } else {
-              throw error; // 다른 오류는 다시 던짐
+              throw error; // Rethrow other errors
             }
           }
         }
         
-        // 부모 컴포넌트에 이벤트 발생
+        // Emit event to notify parent component
         this.$emit('like-changed', this.isLiked);
       } catch (error) {
-        console.error('좋아요 처리 중 오류 발생:', error);
+        console.error('Error processing like action:', error);
         if (error.response && error.response.status === 409) {
-          this.isLiked = true; // 이미 좋아요 상태로 설정
-          this.toast.info('이미 좋아요한 여행지입니다.');
+          this.isLiked = true; // Set to liked state
+          this.toast.info('Already liked');
         } else {
-          this.toast.error('좋아요 처리 중 오류가 발생했습니다.');
+          this.toast.error('Error processing like action');
         }
       } finally {
         this.isLoading = false;
@@ -117,10 +135,12 @@ export default {
 </script>
 
 <style scoped>
+/* Container styling */
 .like-button-container {
   margin: 10px 0;
 }
 
+/* Button styling with different states */
 .like-button {
   display: flex;
   align-items: center;
@@ -137,11 +157,13 @@ export default {
   transition: all 0.2s;
 }
 
+/* Hover state styling */
 .like-button:hover {
   background-color: #f7fafc;
   border-color: #cbd5e0;
 }
 
+/* Active/liked state styling */
 .like-button.liked {
   background-color: #fed7d7;
   border-color: #fc8181;
@@ -152,11 +174,13 @@ export default {
   background-color: #fecaca;
 }
 
+/* Disabled state styling */
 .like-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
+/* Icon styling */
 .like-button i {
   font-size: 16px;
 }

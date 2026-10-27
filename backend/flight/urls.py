@@ -1,9 +1,10 @@
 from django.urls import path
-from .views import search_flights, search_airports, get_flight_details  # ✅ 추가 확인!
+from .views import get_airports, search_flights, get_flight_details, search_flights_complete
 
+# flight urls (api)
 urlpatterns = [
     path("search/", search_flights, name="search-flights"),
-    path("search-airports/", search_airports, name="search-airports"),  # 🏙️ 공항 자동완성
-    path('details/', get_flight_details, name='get_flight_details'),
-
-]
+    path("get-airports/", get_airports, name="get-airports"),  # Airport autocomplete
+    path('get-flight-details/', get_flight_details, name='get-flight-details'),
+    path('get-complete-results/', search_flights_complete, name='search-flights-complete'),
+] 

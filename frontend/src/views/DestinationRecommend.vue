@@ -1,22 +1,25 @@
 <template>
+  <!-- Personalized destination recommendation page -->
   <div class="destination-recommend">
     <div class="header">
       <h1>Recommendations For You</h1>
-      <p>List of Recommended Destionations as your Preferences</p>
+      <p>List of Recommended Destinations as your Preferences</p>
     </div>
 
+    <!-- Loading state -->
     <div v-if="isLoading" class="loading">
       <div class="spinner"></div>
       <p>Fetching Recommended List...</p>
     </div>
 
+    <!-- Error state -->
     <div v-else-if="error" class="error-container">
       <p>{{ error }}</p>
-      <button @click="fetchRecommendations" class="retry-btn">다시 시도</button>
+      <button @click="fetchRecommendations" class="retry-btn">Try Again</button>
     </div>
 
     <div v-else>
-      <!-- 태그 그룹별 추천 -->
+      <!-- Tag group based recommendations -->
       <div v-if="Object.keys(tagGroupRecommendations).length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on your Preference</h2>
@@ -25,7 +28,7 @@
           </p>
         </div>
         
-        <!-- 각 태그별 추천 섹션 -->
+        <!-- Recommendations for each tag group -->
         <div v-for="(destinations, tag) in tagGroupRecommendations" :key="tag" class="tag-group">
           <h3 class="tag-title">{{ getTagTitle(tag) }}</h3>
           
@@ -57,7 +60,7 @@
         </div>
       </div>
 
-      <!-- 활동 기반 추천 -->
+      <!-- Activity-based recommendations -->
       <div v-if="activityBasedRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on your Activities</h2>
@@ -96,7 +99,7 @@
         </div>
       </div>
 
-      <!-- 서브카테고리 기반 추천 -->
+      <!-- Subcategory-based recommendations -->
       <div v-if="subcategoryRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on Sub-Categories</h2>
@@ -134,7 +137,7 @@
         </div>
       </div>
 
-      <!-- 서브타입 기반 추천 -->
+      <!-- Subtype-based recommendations -->
       <div v-if="subtypeRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on Sub-Types</h2>
@@ -172,7 +175,7 @@
         </div>
       </div>
 
-      <!-- 국가 기반 추천 -->
+      <!-- Country-based recommendations -->
       <div v-if="countryRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on Countries</h2>
@@ -208,7 +211,7 @@
         </div>
       </div>
 
-      <!-- 키워드 기반 추천 -->
+      <!-- Keyword-based recommendations from reviews -->
       <div v-if="keywordRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on your Reviews</h2>
@@ -244,7 +247,7 @@
         </div>
       </div>
 
-      <!-- 최근 본 여행지 기반 추천 -->
+      <!-- Recently viewed based recommendations -->
       <div v-if="recentlyViewedRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Based on Recently-Viewed Destinations</h2>
@@ -280,7 +283,7 @@
         </div>
       </div>
 
-      <!-- 인기 여행지 추천 -->
+      <!-- Popular destination recommendations -->
       <div v-if="popularRecommendations.length > 0" class="recommendation-section">
         <div class="section-header">
           <h2>Popular Destinations</h2>
@@ -309,7 +312,7 @@
         </div>
       </div>
 
-      <!-- 추천 결과가 없는 경우 -->
+      <!-- No recommendations state -->
       <div v-if="recommendations.length === 0" class="no-recommendations">
         <p>There are no travel destinations to recommend yet. Click Like or write a review for the destination!</p>
         <router-link to="/destinations" class="browse-all-btn">Seek for Destinations</router-link>
@@ -321,6 +324,10 @@
 <script>
 import axios from 'axios';
 
+/**
+ * Destination Recommendation Component
+ * Provides personalized destination recommendations based on user preferences and activity
+ */
 export default {
   name: 'DestinationRecommend',
   data() {
@@ -339,20 +346,44 @@ export default {
     };
   },
   computed: {
+    /**
+     * Check if user is authenticated
+     * @returns {boolean} Authentication status
+     */
     isAuthenticated() {
       return !!localStorage.getItem('access_token');
     },
+    
+    /**
+     * Filter recommendations based on activity
+     * @returns {Array} Activity-based recommendations
+     */
     activityBasedRecommendations() {
       return this.recommendations.filter(item => item.recommendation_type === 'activity');
     },
+    
+    /**
+     * Filter recommendations based on tag preferences
+     * @returns {Array} Tag-based recommendations
+     */
     tagBasedRecommendations() {
       return this.recommendations.filter(item => item.recommendation_type === 'tag');
     },
+    
+    /**
+     * Filter popular recommendations
+     * @returns {Array} Popular destination recommendations
+     */
     popularRecommendations() {
       return this.recommendations.filter(item => item.recommendation_type === 'popular');
     }
   },
   methods: {
+    /**
+     * Get personalized title for tag group
+     * @param {string} tag - Tag name
+     * @returns {string} Personalized title string
+     */
     getTagTitle(tag) {
       const tagTitles = {
         'Fun & Games': 'For those looking for fun and games!',
@@ -377,6 +408,12 @@ export default {
       
       return tagTitles[tag] || `For those who love ${tag}!`;
     },
+    
+    /**
+     * Format location string for display
+     * @param {Object} destination - Destination object
+     * @returns {string} Formatted location string
+     */
     getLocationString(destination) {
       const parts = [];
       if (destination.city) parts.push(destination.city);
@@ -385,6 +422,10 @@ export default {
       
       return parts.join(', ') || 'No Location Information';
     },
+    
+    /**
+     * Fetch personalized recommendations from the API
+     */
     async fetchRecommendations() {
       try {
         this.isLoading = true;
@@ -406,27 +447,27 @@ export default {
         
         console.log('Loading Recommendation List...');
         
-        // 최근 본 여행지 정보 가져오기
+        // Get recently viewed destinations from localStorage
         const recentlyViewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
         console.log('Recently Viewed Destinations', recentlyViewed);
         
         const response = await axios.post('http://localhost:8000/api/destinations/recommend/', 
           { recently_viewed: recentlyViewed },
           {
-            headers: {
-              Authorization: `Bearer ${token}`
+          headers: {
+            Authorization: `Bearer ${token}`
             }
           }
         );
         
-        console.log('추천 응답:', response.data);
+        console.log('Recommendation response:', response.data);
         
         if (response.data.results && response.data.results.length > 0) {
           this.recommendations = response.data.results;
           this.activityWeight = response.data.activity_weight || 0;
           this.tagWeight = response.data.tag_weight || 1;
           
-          // 서브카테고리, 서브타입, 국가 기반 추천 결과 설정
+          // Set subcategory, subtype, and country based recommendations
           if (response.data.subcategory_recommendations) {
             this.subcategoryRecommendations = response.data.subcategory_recommendations;
           }
@@ -439,28 +480,28 @@ export default {
             this.countryRecommendations = response.data.country_recommendations;
           }
           
-          // 키워드 기반 추천 결과 설정
+          // Set keyword based recommendations
           if (response.data.keyword_recommendations) {
             this.keywordRecommendations = response.data.keyword_recommendations;
           }
           
-          // 최근 본 여행지 기반 추천 결과 설정
+          // Set recently viewed based recommendations
           if (response.data.recently_viewed_recommendations) {
             this.recentlyViewedRecommendations = response.data.recently_viewed_recommendations;
           }
           
-          // 태그 그룹별 추천 결과 설정
+          // Set tag group recommendations
           if (response.data.tag_group_recommendations) {
             this.tagGroupRecommendations = response.data.tag_group_recommendations;
           }
         } else {
-          this.error = '추천할 여행지가 없습니다.';
+          this.error = 'No destinations to recommend.';
         }
         
         this.isLoading = false;
       } catch (error) {
-        console.error('추천 여행지를 가져오는데 실패했습니다:', error);
-        this.error = '추천 여행지를 가져오는데 실패했습니다. 다시 시도해주세요.';
+        console.error('Failed to load recommended destinations:', error);
+        this.error = 'Failed to load recommendations. Please try again.';
         this.isLoading = false;
       }
     }
@@ -469,7 +510,7 @@ export default {
     if (this.isAuthenticated) {
       this.fetchRecommendations();
     } else {
-      this.error = '로그인이 필요합니다.';
+      this.error = 'Login is required.';
       this.isLoading = false;
     }
   }
@@ -477,12 +518,14 @@ export default {
 </script>
 
 <style scoped>
+/* Main container */
 .destination-recommend {
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
 }
 
+/* Header styling */
 .header {
   text-align: center;
   margin-bottom: 2rem;
@@ -499,6 +542,7 @@ export default {
   font-size: 1.1rem;
 }
 
+/* Loading indicator */
 .loading {
   display: flex;
   flex-direction: column;
@@ -522,6 +566,7 @@ export default {
   100% { transform: rotate(360deg); }
 }
 
+/* Error message styling */
 .error-container {
   text-align: center;
   padding: 2rem;
@@ -530,6 +575,7 @@ export default {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+/* Retry button styling */
 .retry-btn {
   background-color: #3498db;
   color: white;
@@ -541,10 +587,12 @@ export default {
   font-size: 1rem;
 }
 
+/* Recommendation section styling */
 .recommendation-section {
   margin-bottom: 3rem;
 }
 
+/* Section header styling */
 .section-header {
   margin-bottom: 1.5rem;
 }
@@ -557,22 +605,26 @@ export default {
   padding-left: 0.8rem;
 }
 
+/* Section description styling */
 .section-description {
   color: #7f8c8d;
   font-size: 1rem;
 }
 
+/* Activity weight indicator */
 .weight-info {
   font-size: 0.9rem;
   color: #95a5a6;
 }
 
+/* Destinations grid layout */
 .destinations-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.5rem;
 }
 
+/* Destination card styling */
 .destination-card {
   background-color: white;
   border-radius: 8px;
@@ -586,28 +638,33 @@ export default {
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
 }
 
+/* Destination image styling */
 .destination-image {
   height: 180px;
   background-size: cover;
   background-position: center;
 }
 
+/* Destination info container */
 .destination-info {
   padding: 1.2rem;
 }
 
+/* Destination name styling */
 .destination-info h3 {
   font-size: 1.2rem;
   margin-bottom: 0.5rem;
   color: #2c3e50;
 }
 
+/* Location text styling */
 .location {
   color: #7f8c8d;
   font-size: 0.9rem;
   margin-bottom: 0.5rem;
 }
 
+/* Category tag styling */
 .category {
   display: inline-block;
   background-color: #e0f7fa;
@@ -618,6 +675,7 @@ export default {
   margin-bottom: 0.8rem;
 }
 
+/* Similarity score container */
 .similarity-score {
   display: flex;
   align-items: center;
@@ -625,11 +683,13 @@ export default {
   font-size: 0.9rem;
 }
 
+/* Similarity score label */
 .score-label {
   margin-right: 0.5rem;
   color: #7f8c8d;
 }
 
+/* Similarity score bar */
 .score-bar {
   flex-grow: 1;
   height: 6px;
@@ -639,17 +699,20 @@ export default {
   margin: 0 0.5rem;
 }
 
+/* Similarity score fill */
 .score-fill {
   height: 100%;
   background-color: #3498db;
   border-radius: 3px;
 }
 
+/* Similarity score value */
 .score-value {
   color: #3498db;
   font-weight: bold;
 }
 
+/* View details button */
 .view-details {
   display: inline-block;
   background-color: #3498db;
@@ -665,6 +728,7 @@ export default {
   background-color: #2980b9;
 }
 
+/* No recommendations message */
 .no-recommendations {
   text-align: center;
   padding: 3rem;
@@ -673,6 +737,7 @@ export default {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+/* Browse all destinations button */
 .browse-all-btn {
   display: inline-block;
   background-color: #3498db;
@@ -689,10 +754,12 @@ export default {
   background-color: #2980b9;
 }
 
+/* Tag group styling */
 .tag-group {
   margin-bottom: 2rem;
 }
 
+/* Tag title styling */
 .tag-title {
   font-size: 1.3rem;
   color: #2c3e50;
@@ -701,6 +768,7 @@ export default {
   border-left: 3px solid #e74c3c;
 }
 
+/* Responsive adjustments */
 @media (max-width: 768px) {
   .destination-recommend {
     padding: 1rem;

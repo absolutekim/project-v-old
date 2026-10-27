@@ -6,7 +6,6 @@ import PostDetailView from '@/views/PostDetailView.vue';
 import NewPostView from '@/views/NewPostView.vue';
 import EditPostView from '@/views/EditPostView.vue';
 import CommunityView from '@/views/CommunityView.vue';
-import FlightSearchView from '@/views/FlightSearchView.vue';
 import DestinationList from '@/views/DestinationList.vue';
 import DestinationDetailView from '@/views/DestinationDetailView.vue';
 import DestinationRecommend from '@/views/DestinationRecommend.vue';
@@ -14,7 +13,15 @@ import MyPage from '@/views/MyPage.vue';
 import ProfileView from '../views/ProfileView.vue'
 import MostLoved from '../views/MostLoved.vue'
 import CreatePlanner from '@/views/CreatePlanner.vue';
+import NearbyLocations from '@/components/NearbyLocations.vue';
+import FlightView from '@/views/FlightView.vue';
 
+
+/**
+ * Routes configuration for the application
+ * Each route maps a URL path to a Vue component
+ * Some routes have meta fields to specify authentication requirements
+ */
 const routes = [
   { path: '/', component: WelcomeView },
   { path: '/register', component: RegisterView },
@@ -23,7 +30,6 @@ const routes = [
   { path: '/community/:id', component: PostDetailView, props: true, meta: { requiresAuth: true } },
   { path: '/community/new', component: NewPostView, meta: { requiresAuth: true } },
   { path: '/community/:id/edit', component: EditPostView, props: true, meta: { requiresAuth: true } },
-  { path: '/flights', component: FlightSearchView },
   { path: '/destinations', component: DestinationList },
   { path: '/destinations/:id', component: DestinationDetailView, props: true },
   { path: '/recommendations', component: DestinationRecommend, meta: { requiresAuth: true } },
@@ -45,20 +51,47 @@ const routes = [
     component: CreatePlanner,
     meta: { requiresAuth: true }
   },
+  {
+    path: '/nearby',
+    name: 'NearbyLocations',
+    component: NearbyLocations
+  },
+  {
+    path: '/flights',
+    name: 'Flights',
+    component: FlightView
+  },
+  {
+    path: '/flights/details',
+    name: 'FlightDetails',
+    component: () => import('@/views/FlightDetailView.vue'),
+    props: (route) => ({ 
+      token: route.query.token,
+      itineraryId: route.query.itineraryId
+    })
+  },
 ];
 
+/**
+ * Create Vue Router instance with HTML5 history mode
+ * This enables cleaner URLs without the hash (#) symbol
+ */
 const router = createRouter({
   history: createWebHistory(),
   routes,
 });
 
-// ✅ 로그인하지 않은 사용자는 커뮤니티 접근 차단
+/**
+ * Global navigation guard
+ * Prevents unauthorized access to protected routes
+ * Redirects to login page if authentication is required but user is not logged in
+ */
 router.beforeEach((to, from, next) => {
   const isAuthenticated = !!localStorage.getItem('access_token');
   
   if (to.meta.requiresAuth && !isAuthenticated) {
-    alert("로그인이 필요합니다.");
-    next('/login'); // ✅ 로그인 페이지로 리디렉트
+    alert("Login required to access this page.");
+    next('/login'); // Redirect to login page
   } else {
     next();
   }

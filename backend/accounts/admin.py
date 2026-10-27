@@ -1,5 +1,5 @@
 from django.contrib import admin
 from accounts.models import CustomUser
 
-# Django Admin에서 CustomUser 관리 가능하게 등록
+# Register CustomUser model to be manageable in Django Admin
 admin.site.register(CustomUser)

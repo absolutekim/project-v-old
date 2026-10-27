@@ -1,7 +1,8 @@
 <template>
-  <v-container class="destination-detail-container">
+  <!-- Destination detail page container -->
+  <v-container class="destination-detail-container" fluid>
     <v-row justify="center">
-      <v-col cols="12" md="8">
+      <v-col cols="12" md="10" lg="10">
         <v-card class="destination-detail-card" elevation="4">
           <!-- Loading state -->
           <v-card v-if="loading" class="text-center pa-6">
@@ -37,13 +38,21 @@
               </v-chip>
             </v-card-title>
 
-            <!-- 좋아요 버튼 추가 -->
-            <div class="like-button-container px-4">
+            <!-- Like button section -->
+            <div class="like-button-container px-4 d-flex align-center">
               <like-button 
                 :location-id="Number(destination.id)" 
                 :initial-liked="destination.user_has_liked"
                 @like-changed="onLikeChanged"
               />
+              <v-chip
+                v-if="destination.likes_count !== undefined"
+                color="pink-lighten-4"
+                class="ml-3"
+                prepend-icon="mdi-heart"
+              >
+                {{ destination.likes_count }} {{ destination.likes_count === 1 ? 'Like' : 'Likes' }}
+              </v-chip>
             </div>
 
             <v-card-text>
@@ -175,13 +184,48 @@
                 </v-col>
               </v-row>
 
-              <!-- 리뷰 섹션 추가 -->
+              <!-- Map Container -->
+              <v-row v-if="destination.latitude && destination.longitude" class="mt-4">
+                <v-col cols="12">
+                  <h3 class="text-h6 mb-3">Location Map</h3>
+                  <v-alert v-if="mapError" type="warning" class="mb-3">
+                    {{ mapError }}
+                  </v-alert>
+                  <div
+                    id="map"
+                    ref="mapContainer"
+                    style="width: 100%; height: 400px; border-radius: 8px;"
+                  ></div>
+                </v-col>
+              </v-row>
+
+              <!-- Reviews section -->
               <v-row class="mt-4">
                 <v-col cols="12">
-                  <h3 class="text-h6 mb-3">리뷰</h3>
+                  <h3 class="text-h6 mb-3">Reviews</h3>
                   
-                  <!-- 리뷰 작성 폼 -->
-                  <div v-if="isAuthenticated && !isEditingReview">
+                  <!-- Login prompt for unauthenticated users -->
+                  <v-alert
+                    v-if="!isAuthenticated"
+                    color="info"
+                    icon="mdi-information"
+                    class="mb-4"
+                  >
+                    Please <router-link to="/login">log in</router-link> to leave a review.
+                  </v-alert>
+                  
+                  <!-- Already reviewed message -->
+                  <v-alert
+                    v-else-if="hasUserReview"
+                    color="success"
+                    icon="mdi-check-circle"
+                    class="mb-4"
+                  >
+                    You have already submitted a review for this destination. You can edit your review below.
+                  </v-alert>
+                  
+                  <!-- Review form for creating new reviews -->
+                  <div v-if="isAuthenticated && !isEditingReview && !hasUserReview">
                     <review-form 
                       :location-id="Number(destination.id)" 
                       @review-submitted="onReviewSubmitted"
@@ -189,7 +233,7 @@
                     />
                   </div>
                   
-                  <!-- 리뷰 수정 폼 -->
+                  <!-- Review form for editing existing reviews -->
                   <div v-if="isEditingReview">
                     <review-form 
                       :location-id="Number(destination.id)" 
@@ -200,10 +244,11 @@
                     />
                   </div>
                   
-                  <!-- 리뷰 목록 -->
+                  <!-- Reviews list -->
                   <review-list 
                     :location-id="Number(destination.id)" 
                     @edit-review="startEditReview"
+                    @reviews-loaded="checkUserReview"
                     ref="reviewList"
                   />
                 </v-col>
@@ -230,11 +275,17 @@
 </template>
 
 <script>
+/* eslint-disable no-undef */
 import axios from 'axios';
 import LikeButton from '@/components/LikeButton.vue';
 import ReviewForm from '@/components/ReviewForm.vue';
 import ReviewList from '@/components/ReviewList.vue';
 
+/**
+ * Destination Detail View
+ * Displays comprehensive information about a specific travel destination
+ * Includes basic info, address details, contact info, and user reviews
+ */
 export default {
   components: {
     LikeButton,
@@ -247,77 +298,135 @@ export default {
       loading: true,
       error: null,
       isEditingReview: false,
-      currentEditingReview: null
+      currentEditingReview: null,
+      map: null,
+      mapLoaded: false,
+      mapError: null,
+      mapInitRetries: 0, // Number of retries for map initialization
+      coordinatesText: '',
+      routeCoordinates: [],
+      routeMarkers: [],
+      routePolyline: null,
+      routeInfoWindows: [],
+      exampleCoordinates: '71.16983 25.783571 70.97685 25.97946 70.66463 23.680859 69.94744 23.187012 69.93274 23.270948 69.88493 23.25117',
+      handleWindowResize: null,
+      hasUserReview: false
     };
   },
   computed: {
+    /**
+     * Check if user is authenticated
+     * @returns {boolean} Authentication status
+     */
     isAuthenticated() {
       return !!localStorage.getItem('access_token');
     }
   },
-  async created() {
+  created() {
     try {
-      // 인증 토큰이 있으면 헤더에 추가
+      // Add authentication token to headers if available
       const token = localStorage.getItem('access_token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
-      const response = await axios.get(`http://localhost:8000/api/destinations/${this.$route.params.id}/`, {
-        headers
-      });
-      this.destination = response.data;
-      console.log('여행지 상세 정보:', this.destination);
+      // Start loading data
+      this.loading = true;
       
-      // 최근 본 여행지에 추가
-      this.addToRecentlyViewed(this.destination);
+      // Get destination data asynchronously
+      axios.get(`http://localhost:8000/api/destinations/${this.$route.params.id}/`, {
+        headers
+      }).then(response => {
+        this.destination = response.data;
+        
+        // Add to recently viewed destinations
+        this.addToRecentlyViewed(this.destination);
+      }).catch(err => {
+        this.error = err.message;
+        console.error("Failed to load data:", err);
+      }).finally(() => {
+        // Set loading complete flag
+        this.loading = false;
+      });
     } catch (err) {
       this.error = err.message;
-      console.error("🚨 Failed to load data:", err);
-    } finally {
+      console.error("Failed to load data:", err);
       this.loading = false;
     }
   },
   methods: {
+    /**
+     * Handle like status change event from like button
+     * @param {boolean} isLiked - New like status
+     */
     onLikeChanged(isLiked) {
       this.destination.user_has_liked = isLiked;
+      
+      // Update likes_count
+      if (this.destination.likes_count !== undefined) {
+        if (isLiked) {
+          // Add like
+          this.destination.likes_count += 1;
+        } else {
+          // Remove like
+          this.destination.likes_count = Math.max(0, this.destination.likes_count - 1);
+        }
+      }
     },
-    onReviewSubmitted(review) {
-      console.log('리뷰 제출됨:', review);
-      // 리뷰 목록 새로고침
+    
+    /**
+     * Handle new review submission
+     */
+    onReviewSubmitted() {
+      // Refresh reviews list
       if (this.$refs.reviewList) {
         this.$refs.reviewList.fetchReviews();
       }
     },
+    
+    /**
+     * Start editing an existing review
+     * @param {Object} review - Review to edit
+     */
     startEditReview(review) {
-      console.log('리뷰 수정 시작:', review);
       this.isEditingReview = true;
       this.currentEditingReview = review;
     },
+    
+    /**
+     * Cancel review editing mode
+     */
     cancelEditReview() {
-      console.log('리뷰 수정 취소');
       this.isEditingReview = false;
       this.currentEditingReview = null;
     },
-    onReviewUpdated(review) {
-      console.log('리뷰 업데이트됨:', review);
-      // 리뷰 목록 새로고침
+    
+    /**
+     * Handle review update completion
+     */
+    onReviewUpdated() {
+      // Refresh reviews list
       if (this.$refs.reviewList) {
         this.$refs.reviewList.fetchReviews();
       }
       this.isEditingReview = false;
       this.currentEditingReview = null;
     },
-    // 최근 본 여행지에 추가하는 함수
+    
+    /**
+     * Add destination to recently viewed list in localStorage
+     * Stores limited information for quick access later
+     * @param {Object} destination - Destination to save to recently viewed
+     */
     addToRecentlyViewed(destination) {
       if (!destination || !destination.id) return;
       
       try {
-        // localStorage에서 최근 본 여행지 가져오기
+        // Get recently viewed destinations from localStorage
         let recentlyViewed = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
         
-        // 이미 있으면 삭제 (최신 정보로 업데이트하기 위해)
+        // Remove if already exists (to update with latest info)
         recentlyViewed = recentlyViewed.filter(item => item.id !== destination.id);
         
-        // 최근 본 여행지 정보 객체 생성
+        // Create viewed info object with essential details
         const viewedInfo = {
           id: destination.id,
           name: destination.name,
@@ -327,55 +436,391 @@ export default {
           timestamp: new Date().toISOString()
         };
         
-        // 배열 앞에 추가
+        // Add to the beginning of the array
         recentlyViewed.unshift(viewedInfo);
         
-        // 최대 10개만 유지
+        // Keep only the 10 most recent
         if (recentlyViewed.length > 10) {
           recentlyViewed = recentlyViewed.slice(0, 10);
         }
         
-        // localStorage에 저장
+        // Save to localStorage
         localStorage.setItem('recentlyViewed', JSON.stringify(recentlyViewed));
-        console.log('최근 본 여행지에 추가됨:', destination.name);
       } catch (error) {
-        console.error('최근 본 여행지 저장 중 오류 발생:', error);
+        console.error('Error saving to recently viewed:', error);
       }
+    },
+    
+    /**
+     * Load Google Maps API script
+     */
+    loadGoogleMapsScript() {
+      // Check if it's already loaded
+      if (window.google && window.google.maps) {
+        // Execute after DOM is fully updated
+        this.$nextTick(() => {
+          this.initMap();
+        });
+        return;
+      }
+      
+      // Check if the script is already added (prevent duplicate loading)
+      if (document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')) {
+        
+        // Check every 5 seconds until loaded
+        const checkInterval = setInterval(() => {
+          if (window.google && window.google.maps) {
+            clearInterval(checkInterval);
+            this.initMap();
+          }
+        }, 5000);
+        
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          if (!window.google || !window.google.maps) {
+            console.error('Google Maps API load timeout');
+            this.mapError = "Google Maps API load timeout";
+            this.mapLoaded = true;
+          }
+        }, 30000);
+        
+        return;
+      }
+      
+      const API_KEY = 'AIzaSyAnJWxpGIPrDueHMNX_1xkopRALQXCeZOE';
+      
+      // Change to direct script loading method
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&v=weekly`;
+      script.async = true;
+      script.defer = true;
+      
+      // Script load complete event
+      script.onload = () => {
+        
+        // Additional verification and delay processing
+        setTimeout(() => {
+          if (window.google && window.google.maps) {
+            this.initMap();
+          } else {
+            console.error('Google Maps API loaded but object not found');
+            this.mapError = "Failed to initialize Google Maps";
+            this.mapLoaded = true;
+          }
+        }, 1000);
+      };
+      
+      // Script load error handling
+      script.onerror = (error) => {
+        console.error('Google Maps API script load failed:', error);
+        this.mapError = "Failed to load Google Maps API";
+        this.mapLoaded = true;
+      };
+      
+      // Add script to DOM
+      document.head.appendChild(script);
+    },
+    
+    /**
+     * Initialize Google Map with given location coordinates
+     */
+    initMap() {
+      if (!this.destination || !this.destination.latitude || !this.destination.longitude) {
+        this.mapError = "No coordinates information";
+        this.mapLoaded = true;
+        return;
+      }
+      
+      try {
+        const lat = parseFloat(this.destination.latitude);
+        const lng = parseFloat(this.destination.longitude);
+        
+        if (isNaN(lat) || isNaN(lng)) {
+          this.mapError = "Invalid coordinates";
+          this.mapLoaded = true;
+          return;
+        }
+        
+        // Check map container
+        const mapElement = this.$refs.mapContainer || document.getElementById('map');
+        if (!mapElement) {
+          
+          // Check maximum retry count
+          if (this.mapInitRetries >= 3) {
+            console.error('Map initialization maximum retries exceeded');
+            this.mapError = "can't find map element";
+            this.mapLoaded = true;
+            return;
+          }
+          
+          this.mapInitRetries++;
+          // Delay and retry
+          setTimeout(() => {
+            this.initMap();
+          }, 1000);
+          return;
+        }
+        
+        // Check if map element is not visible or has zero size
+        if (mapElement.offsetWidth === 0 || mapElement.offsetHeight === 0) {
+          
+          if (this.mapInitRetries >= 3) {
+            console.error('Map initialization maximum retries exceeded');
+            this.mapError = "Map element size is 0";
+            this.mapLoaded = true;
+            return;
+          }
+          
+          this.mapInitRetries++;
+          setTimeout(() => {
+            this.initMap();
+          }, 1000);
+          return;
+        }
+        
+        // Check Google Maps API
+        if (!window.google || !window.google.maps) {
+          console.error('Google Maps API not loaded');
+          
+          if (this.mapInitRetries >= 3) {
+            this.mapError = "Google Maps API not loaded";
+            this.mapLoaded = true;
+            return;
+          }
+          
+          this.mapInitRetries++;
+          this.loadGoogleMapsScript();
+          return;
+        }
+        
+        // Remove existing map before creating new one (prevent duplicate creation)
+        if (this.map) {
+          this.map = null;
+        }
+        
+        // Set map options
+        const mapOptions = {
+          zoom: 15,
+          center: { lat, lng },
+          mapTypeControl: true,
+          fullscreenControl: true,
+          streetViewControl: true,
+          mapTypeId: window.google.maps.MapTypeId.ROADMAP
+        };
+        
+        // Create map
+        this.map = new window.google.maps.Map(mapElement, mapOptions);
+        
+        // Check map creation
+        if (!this.map) {
+          console.error('Map object creation failed');
+          this.mapError = "Failed to create map object";
+          this.mapLoaded = true;
+          return;
+        }
+        
+        // Create marker
+        this.createMarker(lat, lng);
+        
+        this.mapLoaded = true;
+        
+      } catch (error) {
+        console.error('Map initialization error:', error);
+        this.mapError = "Failed to load map";
+        this.mapLoaded = true;
+      }
+    },
+    
+    /**
+     * Create marker on map
+     */
+    createMarker(lat, lng) {
+      try {
+        if (!this.map || !window.google || !window.google.maps) {
+          console.error('Marker creation failed: Map or Google Maps API not found');
+          return;
+        }
+        
+        const position = { lat, lng };
+        
+        // Create marker
+        const marker = new window.google.maps.Marker({
+          position: position,
+          map: this.map,
+          title: this.destination.name || 'Location',
+          // Remove animation (prevent errors)
+        });
+        
+        // Info window content
+        const infoContent = `
+          <div style="padding: 8px; max-width: 200px;">
+            <h3 style="margin-top: 0; font-size: 16px;">${this.destination.name || 'Location'}</h3>
+            ${this.destination.address ? `<p style="margin-bottom: 5px; font-size: 14px;">${this.destination.address}</p>` : ''}
+            <p style="margin-bottom: 0; font-size: 12px; color: #666;">Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}</p>
+          </div>
+        `;
+        
+        // Create info window
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: infoContent
+        });
+        
+        // Marker click event
+        marker.addListener('click', () => {
+          infoWindow.open(this.map, marker);
+        });
+        
+        // Display info window initially
+        setTimeout(() => {
+          infoWindow.open(this.map, marker);
+        }, 500);
+        
+      } catch (error) {
+        console.error('Marker creation error:', error);
+        // Marker errors do not affect map display, so ignore
+      }
+    },
+
+    showRouteExample() {
+    },
+
+    /**
+     * Check if user already has a review for this destination
+     * @param {Array} reviews - List of reviews for the destination
+     */
+    checkUserReview(reviews) {
+      const userId = this.getUserId();
+      this.hasUserReview = reviews.some(review => review.author_id === userId);
+    },
+    
+    /**
+     * Get current user ID from localStorage token
+     * @returns {number|null} User ID or null if not logged in
+     */
+    getUserId() {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+        
+        // Decode JWT token content (second part is payload)
+        const payload = token.split('.')[1];
+        const decoded = JSON.parse(atob(payload));
+        
+        // Return user_id if it exists
+        return decoded.user_id || null;
+      } catch (error) {
+        console.error('Error getting user ID:', error);
+        return null;
+      }
+    },
+  },
+  mounted() {
+    // Window resize event handler
+    this.handleWindowResize = () => {
+      if (this.map && window.google && window.google.maps) {
+        window.google.maps.event.trigger(this.map, 'resize');
+        
+        // Reset map center
+        if (this.destination?.latitude && this.destination?.longitude) {
+          const lat = parseFloat(this.destination.latitude);
+          const lng = parseFloat(this.destination.longitude);
+          const center = new window.google.maps.LatLng(lat, lng);
+          this.map.setCenter(center);
+        }
+      }
+    };
+    
+    // Map initialization function (simplified version)
+    const ensureMapInitialization = () => {
+      // Execute after DOM is fully rendered
+      this.$nextTick(() => {
+        // Check if loading is complete and location info exists
+        if (!this.loading && this.destination?.latitude && this.destination?.longitude) {
+          // Start map API loading
+          setTimeout(() => {
+            this.loadGoogleMapsScript();
+          }, 1000);
+        }
+      });
+    };
+    
+    // Watch loading state changes
+    this.$watch('loading', (newValue) => {
+      if (newValue === false) {
+        this.mapInitRetries = 0;
+        this.mapError = null;
+        ensureMapInitialization();
+      }
+    });
+    
+    // Try to initialize map after component is mounted (if already loaded)
+    if (!this.loading && this.destination?.latitude && this.destination?.longitude) {
+      this.mapInitRetries = 0; 
+      ensureMapInitialization();
     }
-  }
+    
+    // Window resize event listener
+    window.addEventListener('resize', this.handleWindowResize);
+  },
+  
+  beforeUnmount() {
+    // Clean up event listeners
+    window.removeEventListener('resize', this.handleWindowResize);
+    
+    // Clean up Google Maps related resources
+    if (this.map && window.google && window.google.maps) {
+      // Remove map object reference
+      this.map = null;
+    }
+  },
 };
 </script>
 
 <style scoped>
+/* Container styling */
 .destination-detail-container {
-  padding-top: 2rem;
-  padding-bottom: 2rem;
-  background-color: #f5f5f5;
+  background-image: url('@/assets/destback.jpg');
+  background-size: cover;
+  background-attachment: fixed;
+  background-position: center;
   min-height: 100vh;
+  padding: 20px;
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
+/* Card styling */
 .destination-detail-card {
   border-radius: 12px;
   overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.95);
 }
 
+/* Header image styling */
 .destination-detail-image {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+/* Card title styling */
 .v-card-title {
   padding: 1.5rem;
   background-color: white;
 }
 
+/* Card content styling */
 .v-card-text {
   padding: 1.5rem;
 }
 
+/* Like button container styling */
 .like-button-container {
-  margin: 0 0 10px 0;
+  margin-bottom: 12px;
 }
 
+/* Link styling */
 a {
   color: #1976d2;
   text-decoration: none;
@@ -385,6 +830,7 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Responsive adjustments */
 @media (max-width: 600px) {
   .destination-detail-container {
     padding-top: 1rem;

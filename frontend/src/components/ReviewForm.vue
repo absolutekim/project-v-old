@@ -1,11 +1,13 @@
 <template>
+  <!-- Review form component for creating and editing reviews -->
   <div class="review-form-container">
-    <h3 class="form-title">{{ existingReview ? '리뷰 수정하기' : '리뷰 작성하기' }}</h3>
+    <h3 class="form-title">{{ existingReview ? 'Edit Review' : 'Write a Review' }}</h3>
     
+    <!-- Rating selection section -->
     <div class="rating-section">
-      <div class="rating-label">평점 선택:</div>
+      <div class="rating-label">Select Rating:</div>
       
-      <!-- 별점 선택 라디오 버튼 -->
+      <!-- Star rating radio buttons -->
       <div class="rating-options">
         <div 
           v-for="rating in 5" 
@@ -21,7 +23,7 @@
             :checked="review.rating === rating"
           />
           <label :for="`rating-${rating}`" class="rating-label-option">
-            {{ rating }}점
+            {{ rating }} points
             <span class="star-icon" :class="{ 'active': rating <= review.rating }">
               <i class="fas fa-star"></i>
             </span>
@@ -29,33 +31,41 @@
         </div>
       </div>
       
+      <!-- Selected rating display -->
       <div class="selected-rating" v-if="review.rating > 0">
-        선택한 평점: <strong>{{ review.rating }}점</strong>
+        Selected rating: <strong>{{ review.rating }} points</strong>
       </div>
       
+      <!-- Rating selection reminder -->
       <div v-else class="rating-hint">
-        ⚠️ 평점을 선택해주세요 (1-5)
+        ⚠️ Please select a rating (1-5)
       </div>
     </div>
     
+    <!-- Review content textarea section -->
     <div class="content-container">
-      <label for="review-content" class="content-label">리뷰 내용:</label>
+      <label for="review-content" class="content-label">Review Content:</label>
       <textarea 
         id="review-content"
         v-model="review.content" 
-        placeholder="여행지에 대한 경험을 공유해주세요..." 
+        placeholder="Share your experience about this destination..." 
         rows="4"
         :disabled="isLoading"
+        maxlength="1000"
       ></textarea>
+      <div class="character-counter">
+        {{ review.content.length }} / 1000 characters
+      </div>
     </div>
     
+    <!-- Form action buttons -->
     <div class="form-actions">
       <button 
         @click="submitReview" 
         class="submit-button"
         :disabled="isLoading || !isValid"
       >
-        {{ isLoading ? '처리 중...' : (existingReview ? '수정하기' : '작성하기') }}
+        {{ isLoading ? 'Processing...' : (existingReview ? 'Update' : 'Submit') }}
       </button>
       
       <button 
@@ -64,7 +74,7 @@
         class="cancel-button"
         :disabled="isLoading"
       >
-        취소
+        Cancel
       </button>
     </div>
   </div>
@@ -74,6 +84,10 @@
 import axios from 'axios';
 import { useToast } from 'vue-toastification';
 
+/**
+ * Review form component for submitting and editing destination reviews
+ * Allows users to rate destinations and share their experiences
+ */
 export default {
   name: 'ReviewForm',
   props: {
@@ -96,66 +110,67 @@ export default {
     };
   },
   mounted() {
-    console.log('ReviewForm mounted - locationId:', this.locationId);
-    console.log('ReviewForm mounted - existingReview:', this.existingReview);
-    console.log('ReviewForm mounted - initial rating:', this.review.rating);
-    console.log('ReviewForm mounted - initial content:', this.review.content);
   },
   setup() {
     const toast = useToast();
     return { toast };
   },
   computed: {
+    /**
+     * Check if the review is valid for submission
+     * Requires both rating and content to be provided
+     */
     isValid() {
       const valid = this.review.rating > 0 && this.review.content.trim().length > 0;
-      console.log('Rating:', this.review.rating, 'Content length:', this.review.content.trim().length, 'isValid:', valid);
       return valid;
     }
   },
   methods: {
+    /**
+     * Set the review rating
+     * @param {number} rating - Selected rating value (1-5)
+     */
     setRating(rating) {
-      console.log('Setting rating to:', rating);
       if (!this.isLoading) {
         this.review.rating = rating;
-        console.log('Rating after setting:', this.review.rating);
       }
     },
     
+    /**
+     * Submit the review to the server
+     * Creates a new review or updates an existing one
+     */
     async submitReview() {
-      console.log('submitReview 호출됨');
-      console.log('현재 리뷰 상태:', this.review);
-      
       if (!localStorage.getItem('access_token')) {
-        this.toast.warning('로그인이 필요한 기능입니다.');
+        this.toast.warning('Login is required for this feature.');
         this.$router.push('/login');
         return;
       }
       
       if (!this.isValid) {
-        console.log('유효성 검사 실패');
-        console.log('Rating:', this.review.rating, 'Content length:', this.review.content.trim().length);
-        this.toast.warning('평점과 리뷰 내용을 모두 입력해주세요.');
+        this.toast.warning('Please provide both rating and review content.');
         return;
       }
       
       this.isLoading = true;
-      console.log('리뷰 데이터 전송 시작');
       
       try {
+        const locationId = parseInt(this.locationId, 10);
+        
+        if (isNaN(locationId)) {
+          throw new Error('Invalid location ID');
+        }
+        
         const reviewData = {
-          location_id: this.locationId,
+          location_id: locationId,
           rating: this.review.rating,
           content: this.review.content
         };
-        
-        console.log('전송할 리뷰 데이터:', reviewData);
         
         let response;
         const token = localStorage.getItem('access_token');
         
         if (this.existingReview) {
-          // 리뷰 수정
-          console.log('기존 리뷰 수정 중...');
           response = await axios.put(
             `http://localhost:8000/api/destinations/reviews/${this.existingReview.id}/`,
             reviewData,
@@ -165,10 +180,8 @@ export default {
               }
             }
           );
-          this.toast.success('리뷰가 수정되었습니다.');
+          this.toast.success('Review updated successfully.');
         } else {
-          // 새 리뷰 작성
-          console.log('새 리뷰 작성 중...');
           response = await axios.post(
             'http://localhost:8000/api/destinations/reviews/',
             reviewData,
@@ -178,24 +191,31 @@ export default {
               }
             }
           );
-          console.log('리뷰 작성 응답:', response.data);
-          this.toast.success('리뷰가 작성되었습니다.');
+          this.toast.success('Review submitted successfully.');
         }
         
-        // 부모 컴포넌트에 이벤트 발생
         this.$emit('review-submitted', response.data);
         
-        // 폼 초기화 (새 리뷰 작성 시)
         if (!this.existingReview) {
           this.review.rating = 0;
           this.review.content = '';
         }
       } catch (error) {
-        console.error('리뷰 제출 중 오류 발생:', error);
+        console.error('Error submitting review:', error);
         if (error.response) {
-          console.error('오류 응답:', error.response.data);
+          console.error('Error response:', error.response.data);
+          
+          // Handle specific error cases with clear messages
+          if (error.response.data.error && error.response.data.error.includes('already written a review')) {
+            this.toast.error('You have already submitted a review for this destination. You can edit your existing review below.');
+          } else if (error.response.status === 400 && error.response.data.content) {
+            this.toast.error(`Review error: ${error.response.data.content[0]}`);
+          } else {
+            this.toast.error('An error occurred while submitting your review. Please try again.');
+          }
+        } else {
+          this.toast.error('An error occurred while submitting your review. Please try again.');
         }
-        this.toast.error('리뷰 제출 중 오류가 발생했습니다.');
       } finally {
         this.isLoading = false;
       }
@@ -205,6 +225,7 @@ export default {
 </script>
 
 <style scoped>
+/* Form container styling */
 .review-form-container {
   background-color: #f8fafc;
   border-radius: 8px;
@@ -213,6 +234,7 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+/* Form title styling */
 .form-title {
   font-size: 18px;
   font-weight: 600;
@@ -220,10 +242,12 @@ export default {
   margin-bottom: 15px;
 }
 
+/* Rating section container */
 .rating-section {
   margin-bottom: 20px;
 }
 
+/* Rating label styling */
 .rating-label {
   font-size: 14px;
   font-weight: 500;
@@ -231,6 +255,7 @@ export default {
   margin-bottom: 10px;
 }
 
+/* Rating options layout */
 .rating-options {
   display: flex;
   flex-wrap: wrap;
@@ -238,15 +263,18 @@ export default {
   margin-bottom: 10px;
 }
 
+/* Single rating option styling */
 .rating-option {
   display: flex;
   align-items: center;
 }
 
+/* Radio button styling */
 .rating-option input[type="radio"] {
   margin-right: 5px;
 }
 
+/* Rating option label styling */
 .rating-label-option {
   display: flex;
   align-items: center;
@@ -255,32 +283,38 @@ export default {
   color: #4a5568;
 }
 
+/* Star icon styling */
 .star-icon {
   margin-left: 5px;
   color: #cbd5e0;
   transition: color 0.2s;
 }
 
+/* Active star styling */
 .star-icon.active {
   color: #f6ad55;
 }
 
+/* Selected rating display */
 .selected-rating {
   margin-top: 10px;
   font-size: 14px;
   color: #4a5568;
 }
 
+/* Rating validation hint */
 .rating-hint {
   font-size: 13px;
   color: #e53e3e;
   margin-top: 5px;
 }
 
+/* Content section container */
 .content-container {
   margin-bottom: 15px;
 }
 
+/* Content label styling */
 .content-label {
   display: block;
   font-size: 14px;
@@ -289,6 +323,7 @@ export default {
   margin-bottom: 5px;
 }
 
+/* Textarea styling */
 textarea {
   width: 100%;
   padding: 12px;
@@ -299,22 +334,34 @@ textarea {
   transition: border-color 0.2s;
 }
 
+/* Textarea focus state */
 textarea:focus {
   outline: none;
   border-color: #4299e1;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
 }
 
+/* Textarea disabled state */
 textarea:disabled {
   background-color: #f7fafc;
   cursor: not-allowed;
 }
 
+/* Character counter display */
+.character-counter {
+  font-size: 12px;
+  color: #718096;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Action buttons container */
 .form-actions {
   display: flex;
   gap: 10px;
 }
 
+/* Button base styling */
 .submit-button,
 .cancel-button {
   padding: 8px 16px;
@@ -325,32 +372,38 @@ textarea:disabled {
   transition: all 0.2s;
 }
 
+/* Submit button styling */
 .submit-button {
   background-color: #4299e1;
   color: white;
   border: none;
 }
 
+/* Submit button hover state */
 .submit-button:hover:not(:disabled) {
   background-color: #3182ce;
 }
 
+/* Submit button disabled state */
 .submit-button:disabled {
   background-color: #a0aec0;
   cursor: not-allowed;
 }
 
+/* Cancel button styling */
 .cancel-button {
   background-color: white;
   color: #4a5568;
   border: 1px solid #e2e8f0;
 }
 
+/* Cancel button hover state */
 .cancel-button:hover:not(:disabled) {
   background-color: #f7fafc;
   border-color: #cbd5e0;
 }
 
+/* Cancel button disabled state */
 .cancel-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;

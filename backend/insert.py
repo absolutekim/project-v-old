@@ -2,17 +2,17 @@ import os
 import django
 import pandas as pd
 
-# ✅ Django 환경 설정
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')  # Django 프로젝트 설정 지정
-django.setup()  # Django ORM 사용 가능하도록 설정
+# ✅ Django environment settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')  # Specify Django project settings
+django.setup()  # Configure Django ORM to be available
 
-from destinations.models import Location  # ✅ Django ORM 사용
+from destinations.models import Location  # ✅ Use Django ORM
 
-# ✅ CSV 파일 로드
-csv_path = "dataset_tripadvisor_2025-03-06_08-09-58-598.csv"  # 파일 확장자 확인 필요
+# ✅ Load CSV file
+csv_path = "dataset_tripadvisor_2025-03-06_08-09-58-598.csv"  # Check file extension
 df = pd.read_csv(csv_path)
 
-# ✅ 필요한 컬럼만 선택
+# ✅ Columns to be used
 main_columns = [
     "id", "name", "description", "category",
     "address", "addressObj/city", "addressObj/state", "addressObj/country", "addressObj/postalcode",
@@ -22,22 +22,22 @@ main_columns = [
     "type"
 ]
 
-# ✅ 실제 존재하는 컬럼만 필터링 (원본 유지)
+# ✅ Filter columns that actually exist (original data)
 df_filtered = df[[col for col in main_columns if col in df.columns]].copy()
 
-# ✅ `subcategories/`와 `subtype/` 컬럼을 동적으로 가져오기
+# ✅ Get `subcategories/` and `subtype/` columns dynamically
 subcategories_cols = [col for col in df.columns if col.startswith("subcategories/")]
 subtypes_cols = [col for col in df.columns if col.startswith("subtype/")]
 
-# ✅ DataFrame에 해당 컬럼이 있는지 확인 후 추가 (원본 유지)
+# ✅ Check if the column exists in the DataFrame and add it (original data)
 for col in subcategories_cols + subtypes_cols:
     df_filtered.loc[:, col] = df[col].fillna("").copy()
 
-# ✅ Django ORM을 사용해 데이터 삽입 (중복 데이터 방지)
+# ✅ Use Django ORM to insert data (prevent duplicate data)
 for _, row in df_filtered.iterrows():
     location, created = Location.objects.update_or_create(
-        id=row["id"],  # 기준이 되는 키
-        defaults={  # ✅ 이미 존재하면 업데이트될 필드
+        id=row["id"],  # ✅ The key to be used
+        defaults={  # ✅ If it already exists, it will be updated
             "name": row["name"],
             "description": row["description"] if pd.notna(row["description"]) else None,
             "category": row["category"] if pd.notna(row["category"]) else None,
@@ -63,15 +63,15 @@ for _, row in df_filtered.iterrows():
 
             "type": row["type"] if pd.notna(row["type"]) else None,
 
-            # ✅ 존재하는 `subcategories/`와 `subtype/` 컬럼만 리스트로 저장
+            # ✅ Save only the existing `subcategories/` and `subtype/` columns as a list
             "subcategories": [row[col] for col in subcategories_cols if col in row.index and pd.notna(row[col]) and row[col] != ""],
             "subtypes": [row[col] for col in subtypes_cols if col in row.index and pd.notna(row[col]) and row[col] != ""]
         }
     )
 
     if created:
-        print(f"✅ 새 데이터 추가: {location.name}")
+        print(f"✅ Add new data: {location.name}")
     else:
-        print(f"🔄 기존 데이터 업데이트: {location.name}")
+        print(f"🔄 Update existing data: {location.name}")
 
-print("✅ 데이터 삽입 완료!")
+print("✅ Data insertion complete!")

@@ -1,19 +1,24 @@
 <template>
+  <!-- Component for displaying the current user's reviews -->
   <div class="user-reviews-container">
-    <h2 class="section-title">내가 작성한 리뷰</h2>
+    <h2 class="section-title">My Reviews</h2>
     
+    <!-- Loading indicator -->
     <div v-if="isLoading" class="loading-container">
       <div class="spinner"></div>
-      <p>리뷰 목록을 불러오는 중...</p>
+      <p>Loading reviews...</p>
     </div>
     
+    <!-- Empty state when no reviews exist -->
     <div v-else-if="reviews.length === 0" class="empty-state">
-      <p>아직 작성한 리뷰가 없습니다.</p>
-      <router-link to="/destinations" class="browse-link">여행지 둘러보기</router-link>
+      <p>You haven't written any reviews yet.</p>
+      <router-link to="/destinations" class="browse-link">Browse Destinations</router-link>
     </div>
     
+    <!-- List of user's reviews -->
     <div v-else class="reviews-list">
       <div v-for="review in reviews" :key="review.id" class="review-card">
+        <!-- Review header with destination info and rating -->
         <div class="review-header">
           <div class="destination-info">
             <router-link 
@@ -21,10 +26,10 @@
               :to="`/destinations/${review.location_id || (review.location && review.location.id)}`" 
               class="destination-name"
             >
-              {{ review.location_name || (review.location && review.location.name) || '여행지 정보 없음' }}
+              {{ review.location_name || (review.location && review.location.name) || 'Unknown Destination' }}
             </router-link>
             <span v-else class="destination-name">
-              {{ review.location_name || (review.location && review.location.name) || '여행지 정보 없음' }}
+              {{ review.location_name || (review.location && review.location.name) || 'Unknown Destination' }}
             </span>
             <p v-if="review.location_city || review.location_country || (review.location && (review.location.city || review.location.country))" class="destination-location">
               <i class="fas fa-map-marker-alt"></i>
@@ -41,45 +46,51 @@
           </div>
         </div>
         
+        <!-- Review content -->
         <div class="review-content">
           <p>{{ review.content }}</p>
         </div>
         
+        <!-- Sentiment analysis display -->
         <div v-if="review.sentiment" class="review-sentiment" :class="getSentimentClass(review.sentiment)">
-          <span class="sentiment-label">감정 분석:</span>
+          <span class="sentiment-label">Sentiment:</span>
           <span class="sentiment-value">{{ getSentimentText(review.sentiment) }}</span>
         </div>
         
+        <!-- Keywords display -->
         <div v-if="review.keywords && review.keywords.length > 0" class="review-keywords">
           <span v-for="(keyword, index) in review.keywords" :key="index" class="keyword-tag">
             {{ keyword }}
           </span>
         </div>
         
+        <!-- Review actions buttons -->
         <div class="review-actions">
           <button @click="editReview(review)" class="action-button edit">
-            <i class="fas fa-edit"></i> 수정
+            <i class="fas fa-edit"></i> Edit
           </button>
           <button @click="deleteReview(review.id)" class="action-button delete">
-            <i class="fas fa-trash"></i> 삭제
+            <i class="fas fa-trash"></i> Delete
           </button>
         </div>
       </div>
     </div>
     
+    <!-- Load more button for pagination -->
     <div v-if="hasMore" class="load-more">
       <button @click="loadMore" :disabled="isLoadingMore" class="load-more-button">
-        {{ isLoadingMore ? '불러오는 중...' : '더 보기' }}
+        {{ isLoadingMore ? 'Loading...' : 'Load More' }}
       </button>
     </div>
     
-    <!-- 리뷰 수정 모달 -->
+    <!-- Review edit modal -->
     <div v-if="showEditModal" class="edit-modal-overlay" @click="closeEditModal">
       <div class="edit-modal" @click.stop>
-        <h3 class="modal-title">리뷰 수정하기</h3>
+        <h3 class="modal-title">Edit Review</h3>
         
+        <!-- Rating selection -->
         <div class="rating-container">
-          <span class="rating-label">평점:</span>
+          <span class="rating-label">Rating:</span>
           <div class="stars">
             <span 
               v-for="star in 5" 
@@ -92,22 +103,28 @@
           </div>
         </div>
         
+        <!-- Review content textarea -->
         <div class="content-container">
           <textarea 
             v-model="editingReview.content" 
-            placeholder="여행지에 대한 경험을 공유해주세요..." 
+            placeholder="Share your experience about this destination..." 
             rows="4"
             :disabled="isSubmitting"
+            maxlength="1000"
           ></textarea>
+          <div class="character-counter">
+            {{ editingReview.content.length }} / 1000 characters
+          </div>
         </div>
         
+        <!-- Modal action buttons -->
         <div class="modal-actions">
           <button 
             @click="submitEditReview" 
             class="submit-button"
             :disabled="isSubmitting || !isEditValid"
           >
-            {{ isSubmitting ? '처리 중...' : '수정하기' }}
+            {{ isSubmitting ? 'Processing...' : 'Update' }}
           </button>
           
           <button 
@@ -115,7 +132,7 @@
             class="cancel-button"
             :disabled="isSubmitting"
           >
-            취소
+            Cancel
           </button>
         </div>
       </div>
@@ -127,6 +144,10 @@
 import axios from 'axios';
 import { useToast } from 'vue-toastification';
 
+/**
+ * Component for displaying and managing a user's reviews
+ * Allows users to view, edit, and delete their own reviews
+ */
 export default {
   name: 'UserReviews',
   data() {
@@ -150,6 +171,10 @@ export default {
     return { toast };
   },
   computed: {
+    /**
+     * Check if the review being edited is valid
+     * @returns {boolean} True if review has rating and content
+     */
     isEditValid() {
       return this.editingReview.rating > 0 && this.editingReview.content.trim().length > 0;
     }
@@ -158,31 +183,50 @@ export default {
     this.fetchReviews();
   },
   methods: {
+    /**
+     * Check if user is authenticated
+     * @returns {boolean} Authentication status
+     */
     isAuthenticated() {
       return !!localStorage.getItem('access_token');
     },
+    
+    /**
+     * Get JWT token from localStorage
+     * @returns {string} JWT access token
+     */
     getToken() {
       return localStorage.getItem('access_token');
     },
+    
+    /**
+     * Format location string from various location data formats
+     * @param {Object} review - Review object with location data
+     * @returns {string} Formatted location string
+     */
     getLocationString(review) {
       const parts = [];
       
-      // 백엔드에서 location 객체로 전달하는 경우
+      // Handle when backend provides location as an object
       if (review.location) {
         if (review.location.city) parts.push(review.location.city);
         if (review.location.country) parts.push(review.location.country);
       } 
-      // 백엔드에서 location_city, location_country로 전달하는 경우
+      // Handle when backend provides location_city and location_country fields
       else {
         if (review.location_city) parts.push(review.location_city);
         if (review.location_country) parts.push(review.location_country);
       }
       
-      return parts.join(', ') || '위치 정보 없음';
+      return parts.join(', ') || 'Location unknown';
     },
+    
+    /**
+     * Fetch user's reviews from the API
+     */
     async fetchReviews() {
       if (!this.isAuthenticated()) {
-        this.toast.warning('로그인이 필요한 기능입니다.');
+        this.toast.warning('Login is required to view your reviews.');
         this.$router.push('/login');
         return;
       }
@@ -196,9 +240,9 @@ export default {
           }
         });
         
-        // 리뷰 데이터 처리
+        // Process review data and fetch missing location info if needed
         this.reviews = response.data.results.map(review => {
-          // location 객체가 없고 location_id만 있는 경우 관광지 정보 가져오기
+          // If we only have location_id but no location details, fetch them
           if (review.location_id && (!review.location || !review.location.name)) {
             this.fetchLocationInfo(review);
           }
@@ -207,26 +251,31 @@ export default {
         
         this.hasMore = this.reviews.length < response.data.count;
       } catch (error) {
-        console.error('리뷰 목록을 불러오는 중 오류 발생:', error);
-        this.toast.error('리뷰 목록을 불러오는 중 오류가 발생했습니다.');
+        this.toast.error('Failed to load your reviews.');
       } finally {
         this.isLoading = false;
       }
     },
     
-    // 관광지 정보 가져오기
+    /**
+     * Fetch location details for a review
+     * @param {Object} review - Review object to update with location data
+     */
     async fetchLocationInfo(review) {
       try {
         const response = await axios.get(`http://localhost:8000/api/destinations/${review.location_id}/`);
-        // 리뷰 객체에 관광지 정보 추가
+        // Add location details to the review object
         review.location_name = response.data.name;
         review.location_city = response.data.city;
         review.location_country = response.data.country;
       } catch (error) {
-        console.error(`관광지 정보를 가져오는 중 오류 발생 (ID: ${review.location_id}):`, error);
+        // Error fetching location info
       }
     },
     
+    /**
+     * Load more reviews for pagination
+     */
     async loadMore() {
       if (this.isLoadingMore) return;
       
@@ -244,13 +293,16 @@ export default {
         this.reviews = [...this.reviews, ...response.data.results];
         this.hasMore = this.reviews.length < response.data.count;
       } catch (error) {
-        console.error('추가 리뷰 목록을 불러오는 중 오류 발생:', error);
-        this.toast.error('추가 리뷰 목록을 불러오는 중 오류가 발생했습니다.');
+        this.toast.error('Failed to load more reviews.');
       } finally {
         this.isLoadingMore = false;
       }
     },
     
+    /**
+     * Open edit modal for a review
+     * @param {Object} review - Review to edit
+     */
     editReview(review) {
       this.editingReview = {
         id: review.id,
@@ -261,6 +313,9 @@ export default {
       this.showEditModal = true;
     },
     
+    /**
+     * Close the edit modal and reset form
+     */
     closeEditModal() {
       this.showEditModal = false;
       this.editingReview = {
@@ -270,34 +325,35 @@ export default {
       };
     },
     
+    /**
+     * Set rating value for the review being edited
+     * @param {number} rating - Rating value (1-5)
+     */
     setRating(rating) {
       if (!this.isSubmitting) {
         this.editingReview.rating = rating;
       }
     },
     
+    /**
+     * Submit edited review to the API
+     */
     async submitEditReview() {
       if (!this.isEditValid) {
-        this.toast.warning('평점과 리뷰 내용을 모두 입력해주세요.');
+        this.toast.warning('Please provide both rating and review content.');
         return;
       }
       
       this.isSubmitting = true;
       
       try {
-        // 현재 리뷰 찾기
-        const currentReview = this.reviews.find(r => r.id === this.editingReview.id);
-        
-        console.log('현재 리뷰 전체 객체:', JSON.stringify(currentReview, null, 2));
-        console.log('리뷰 객체의 모든 키:', Object.keys(currentReview));
-        
-        // 리뷰 수정 요청 데이터 준비 - location_id 없이 rating과 content만 전송
+        // Prepare review data - only send rating and content
         const requestData = {
           rating: this.editingReview.rating,
           content: this.editingReview.content
         };
         
-        // PATCH 메서드 사용 - 부분 업데이트
+        // Use PATCH for partial updates
         const response = await axios.patch(
           `http://localhost:8000/api/destinations/reviews/${this.editingReview.id}/`,
           requestData,
@@ -308,27 +364,27 @@ export default {
           }
         );
         
-        // 리뷰 목록 업데이트
+        // Update review in the list
         const index = this.reviews.findIndex(r => r.id === this.editingReview.id);
         if (index !== -1) {
           this.reviews[index] = response.data;
         }
         
-        this.toast.success('리뷰가 수정되었습니다.');
+        this.toast.success('Review updated successfully.');
         this.closeEditModal();
       } catch (error) {
-        console.error('리뷰 수정 중 오류 발생:', error);
-        if (error.response) {
-          console.error('오류 응답 데이터:', error.response.data);
-        }
-        this.toast.error('리뷰 수정 중 오류가 발생했습니다.');
+        this.toast.error('Failed to update review.');
       } finally {
         this.isSubmitting = false;
       }
     },
     
+    /**
+     * Delete a review after confirmation
+     * @param {number} reviewId - ID of the review to delete
+     */
     async deleteReview(reviewId) {
-      if (!confirm('정말로 이 리뷰를 삭제하시겠습니까?')) {
+      if (!confirm('Are you sure you want to delete this review?')) {
         return;
       }
       
@@ -339,24 +395,33 @@ export default {
           }
         });
         
-        // 리뷰 목록에서 삭제된 리뷰 제거
+        // Remove review from the list
         this.reviews = this.reviews.filter(review => review.id !== reviewId);
-        this.toast.success('리뷰가 삭제되었습니다.');
+        this.toast.success('Review deleted successfully.');
       } catch (error) {
-        console.error('리뷰 삭제 중 오류 발생:', error);
-        this.toast.error('리뷰 삭제 중 오류가 발생했습니다.');
+        this.toast.error('Failed to delete review.');
       }
     },
     
+    /**
+     * Format date string to localized format
+     * @param {string} dateString - ISO date string
+     * @returns {string} Formatted date string
+     */
     formatDate(dateString) {
       const date = new Date(dateString);
-      return date.toLocaleDateString('ko-KR', {
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
       });
     },
     
+    /**
+     * Get CSS class for sentiment display
+     * @param {string} sentiment - Sentiment value
+     * @returns {string} CSS class name
+     */
     getSentimentClass(sentiment) {
       switch (sentiment) {
         case 'POSITIVE':
@@ -368,14 +433,19 @@ export default {
       }
     },
     
+    /**
+     * Get display text for sentiment value
+     * @param {string} sentiment - Sentiment value
+     * @returns {string} Display text
+     */
     getSentimentText(sentiment) {
       switch (sentiment) {
         case 'POSITIVE':
-          return '긍정적';
+          return 'Positive';
         case 'NEGATIVE':
-          return '부정적';
+          return 'Negative';
         default:
-          return '중립적';
+          return 'Neutral';
       }
     }
   }
@@ -383,12 +453,14 @@ export default {
 </script>
 
 <style scoped>
+/* Main container */
 .user-reviews-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
 }
 
+/* Section title */
 .section-title {
   font-size: 24px;
   font-weight: 600;
@@ -396,6 +468,7 @@ export default {
   margin-bottom: 20px;
 }
 
+/* Loading indicator container */
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -403,6 +476,7 @@ export default {
   padding: 40px 0;
 }
 
+/* Spinner animation */
 .spinner {
   width: 40px;
   height: 40px;
@@ -418,6 +492,7 @@ export default {
   100% { transform: rotate(360deg); }
 }
 
+/* Empty state styling */
 .empty-state {
   text-align: center;
   padding: 40px;
@@ -426,6 +501,7 @@ export default {
   color: #718096;
 }
 
+/* Browse destinations link */
 .browse-link {
   display: inline-block;
   margin-top: 15px;
@@ -442,12 +518,14 @@ export default {
   background-color: #3182ce;
 }
 
+/* Reviews list container */
 .reviews-list {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
+/* Individual review card */
 .review-card {
   background-color: white;
   border-radius: 8px;
@@ -455,17 +533,20 @@ export default {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Review header with destination and rating */
 .review-header {
   display: flex;
   justify-content: space-between;
   margin-bottom: 15px;
 }
 
+/* Destination information section */
 .destination-info {
   display: flex;
   flex-direction: column;
 }
 
+/* Destination name styling */
 .destination-name {
   font-size: 18px;
   font-weight: 600;
@@ -478,6 +559,7 @@ export default {
   color: #4299e1;
 }
 
+/* Destination location styling */
 .destination-location {
   font-size: 14px;
   color: #718096;
@@ -487,12 +569,14 @@ export default {
   margin-right: 5px;
 }
 
+/* Review metadata section */
 .review-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
 
+/* Star rating display */
 .rating {
   display: flex;
   margin-bottom: 5px;
@@ -507,11 +591,13 @@ export default {
   color: #f6ad55;
 }
 
+/* Review date display */
 .review-date {
   font-size: 12px;
   color: #718096;
 }
 
+/* Review content styling */
 .review-content {
   font-size: 16px;
   line-height: 1.6;
@@ -519,6 +605,7 @@ export default {
   margin-bottom: 15px;
 }
 
+/* Sentiment analysis badge */
 .review-sentiment {
   display: inline-flex;
   align-items: center;
@@ -528,6 +615,7 @@ export default {
   margin-bottom: 10px;
 }
 
+/* Sentiment types styling */
 .review-sentiment.positive {
   background-color: #c6f6d5;
   color: #2f855a;
@@ -543,11 +631,13 @@ export default {
   color: #4a5568;
 }
 
+/* Sentiment label */
 .sentiment-label {
   font-weight: 500;
   margin-right: 5px;
 }
 
+/* Keywords container */
 .review-keywords {
   display: flex;
   flex-wrap: wrap;
@@ -555,6 +645,7 @@ export default {
   margin-bottom: 15px;
 }
 
+/* Individual keyword tag */
 .keyword-tag {
   background-color: #e2e8f0;
   color: #4a5568;
@@ -563,11 +654,13 @@ export default {
   font-size: 12px;
 }
 
+/* Review actions container */
 .review-actions {
   display: flex;
   gap: 10px;
 }
 
+/* Action button base styling */
 .action-button {
   padding: 8px 16px;
   border-radius: 6px;
@@ -580,6 +673,7 @@ export default {
   gap: 5px;
 }
 
+/* Edit button styling */
 .action-button.edit {
   background-color: #4299e1;
   color: white;
@@ -590,6 +684,7 @@ export default {
   background-color: #3182ce;
 }
 
+/* Delete button styling */
 .action-button.delete {
   background-color: white;
   color: #e53e3e;
@@ -600,11 +695,13 @@ export default {
   background-color: #fff5f5;
 }
 
+/* Load more button container */
 .load-more {
   text-align: center;
   margin-top: 30px;
 }
 
+/* Load more button styling */
 .load-more-button {
   padding: 10px 20px;
   background-color: white;
@@ -627,7 +724,7 @@ export default {
   cursor: not-allowed;
 }
 
-/* 모달 스타일 */
+/* Edit modal styles */
 .edit-modal-overlay {
   position: fixed;
   top: 0;
@@ -641,6 +738,7 @@ export default {
   z-index: 1000;
 }
 
+/* Modal content container */
 .edit-modal {
   background-color: white;
   border-radius: 8px;
@@ -650,6 +748,7 @@ export default {
   box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
 }
 
+/* Modal title */
 .modal-title {
   font-size: 20px;
   font-weight: 600;
@@ -657,12 +756,14 @@ export default {
   margin-bottom: 20px;
 }
 
+/* Rating container in modal */
 .rating-container {
   display: flex;
   align-items: center;
   margin-bottom: 15px;
 }
 
+/* Rating label */
 .rating-label {
   font-size: 14px;
   font-weight: 500;
@@ -670,10 +771,12 @@ export default {
   margin-right: 10px;
 }
 
+/* Stars container */
 .stars {
   display: flex;
 }
 
+/* Star styling */
 .star {
   font-size: 20px;
   color: #cbd5e0;
@@ -682,15 +785,18 @@ export default {
   transition: color 0.2s;
 }
 
+/* Star hover and active state */
 .star:hover,
 .star.active {
   color: #f6ad55;
 }
 
+/* Content container in modal */
 .content-container {
   margin-bottom: 20px;
 }
 
+/* Textarea styling */
 textarea {
   width: 100%;
   padding: 12px;
@@ -701,23 +807,35 @@ textarea {
   transition: border-color 0.2s;
 }
 
+/* Textarea focus state */
 textarea:focus {
   outline: none;
   border-color: #4299e1;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
 }
 
+/* Textarea disabled state */
 textarea:disabled {
   background-color: #f7fafc;
   cursor: not-allowed;
 }
 
+/* Character counter style */
+.character-counter {
+  font-size: 12px;
+  color: #718096;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Modal actions container */
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
 }
 
+/* Submit and cancel buttons */
 .submit-button,
 .cancel-button {
   padding: 8px 16px;
@@ -728,37 +846,44 @@ textarea:disabled {
   transition: all 0.2s;
 }
 
+/* Submit button styling */
 .submit-button {
   background-color: #4299e1;
   color: white;
   border: none;
 }
 
+/* Submit button hover state */
 .submit-button:hover:not(:disabled) {
   background-color: #3182ce;
 }
 
+/* Submit button disabled state */
 .submit-button:disabled {
   background-color: #a0aec0;
   cursor: not-allowed;
 }
 
+/* Cancel button styling */
 .cancel-button {
   background-color: white;
   color: #4a5568;
   border: 1px solid #e2e8f0;
 }
 
+/* Cancel button hover state */
 .cancel-button:hover:not(:disabled) {
   background-color: #f7fafc;
   border-color: #cbd5e0;
 }
 
+/* Cancel button disabled state */
 .cancel-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
+/* Responsive adjustments */
 @media (max-width: 768px) {
   .review-header {
     flex-direction: column;

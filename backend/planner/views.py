@@ -13,27 +13,31 @@ from destinations.models import Location
 
 class IsOwner(permissions.BasePermission):
     """
-    사용자가 플래너의 소유자인지 확인하는 권한 클래스
+    Custom permission to only allow owners of a planner to access it.
+    This ensures that users can only view and modify their own planners.
     """
     def has_object_permission(self, request, view, obj):
         return obj.user == request.user
 
 class PlannerViewSet(viewsets.ModelViewSet):
     """
-    플래너 CRUD API
+    ViewSet for Planner CRUD operations.
+    Provides endpoints for creating, reading, updating and deleting travel planners.
     """
     serializer_class = PlannerSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner]
     
     def get_queryset(self):
         """
-        현재 로그인한 사용자의 플래너만 반환
+        Return only planners owned by the current authenticated user.
+        This ensures users can only see their own planners.
         """
         return Planner.objects.filter(user=self.request.user)
     
     def get_serializer_class(self):
         """
-        요청 메서드에 따라 적절한 시리얼라이저 반환
+        Return appropriate serializer based on the request method.
+        For list views, use a simplified serializer to improve performance.
         """
         if self.action == 'list':
             return PlannerListSerializer
@@ -41,14 +45,23 @@ class PlannerViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        플래너 생성 시 현재 로그인한 사용자를 소유자로 설정
+        Set the current user as the owner when creating a new planner.
+        This associates the planner with the authenticated user.
         """
         serializer.save(user=self.request.user)
     
     @action(detail=True, methods=['get'])
     def items(self, request, pk=None):
         """
-        특정 플래너의 모든 항목 조회
+        Custom endpoint to retrieve all items in a specific planner.
+        Returns detailed information about each destination in the planner.
+        
+        Parameters:
+            request: HTTP request
+            pk: Primary key of the planner
+        
+        Returns:
+            Response with serialized planner items
         """
         planner = self.get_object()
         items = planner.items.all()
@@ -57,20 +70,23 @@ class PlannerViewSet(viewsets.ModelViewSet):
 
 class PlannerItemViewSet(viewsets.ModelViewSet):
     """
-    플래너 항목 CRUD API
+    ViewSet for PlannerItem CRUD operations.
+    Provides endpoints for managing destinations within a travel planner.
     """
     serializer_class = PlannerItemSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         """
-        현재 로그인한 사용자의 플래너 항목만 반환
+        Return only planner items from planners owned by the current user.
+        This ensures users can only see items from their own planners.
         """
         return PlannerItem.objects.filter(planner__user=self.request.user)
     
     def get_serializer_class(self):
         """
-        요청 메서드에 따라 적절한 시리얼라이저 반환
+        Return appropriate serializer based on the request method.
+        Use a specialized serializer for create/update operations.
         """
         if self.action in ['create', 'update', 'partial_update']:
             return PlannerItemCreateSerializer
@@ -78,14 +94,21 @@ class PlannerItemViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        플래너 항목 생성 시 유효성 검사
+        Validate that the user owns the planner before creating a new item.
+        This prevents users from adding items to other users' planners.
+        
+        Parameters:
+            serializer: The serializer instance with validated data
+        
+        Returns:
+            None or Response with error details
         """
         planner = serializer.validated_data.get('planner')
         
-        # 플래너 소유자 확인
+        # Check if user owns the planner
         if planner.user != self.request.user:
             return Response(
-                {"detail": "이 플래너의 소유자가 아닙니다."}, 
+                {"detail": "You are not the owner of this planner."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -94,33 +117,40 @@ class PlannerItemViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def reorder(self, request):
         """
-        플래너 항목 순서 변경
+        Custom endpoint to reorder items within a planner.
+        Allows updating the sequence of destinations in a travel itinerary.
+        
+        Parameters:
+            request: HTTP request containing items with new order values
+        
+        Returns:
+            Response with success message or error details
         """
         items_data = request.data.get('items', [])
         if not items_data:
             return Response(
-                {"detail": "항목 데이터가 없습니다."}, 
+                {"detail": "No item data provided."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 모든 항목이 현재 사용자의 것인지 확인
+        # Verify all items belong to the current user
         item_ids = [item.get('id') for item in items_data]
         items = PlannerItem.objects.filter(id__in=item_ids)
         
         if items.count() != len(item_ids):
             return Response(
-                {"detail": "일부 항목을 찾을 수 없습니다."}, 
+                {"detail": "Some items could not be found."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         for item in items:
             if item.planner.user != request.user:
                 return Response(
-                    {"detail": "일부 항목의 소유자가 아닙니다."}, 
+                    {"detail": "You don't own some of these items."}, 
                     status=status.HTTP_403_FORBIDDEN
                 )
         
-        # 순서 업데이트
+        # Update the order of each item
         for item_data in items_data:
             item_id = item_data.get('id')
             new_order = item_data.get('order')
@@ -128,4 +158,4 @@ class PlannerItemViewSet(viewsets.ModelViewSet):
             if item_id and new_order is not None:
                 PlannerItem.objects.filter(id=item_id).update(order=new_order)
         
-        return Response({"detail": "항목 순서가 업데이트되었습니다."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Items order has been updated."}, status=status.HTTP_200_OK)

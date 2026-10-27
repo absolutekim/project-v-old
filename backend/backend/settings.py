@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,10 +44,11 @@ INSTALLED_APPS = [
     'accounts',
     'rest_framework_simplejwt',
     'community',
-    'flight',
     'destinations',
     'mypage',
     'planner',
+    'flight',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
@@ -88,8 +90,24 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,  # Database connection timeout (seconds)
+        },
     }
 }
+
+# Database connection signal for enabling SQLite foreign key constraints
+from django.db.backends.signals import connection_created
+
+def activate_foreign_keys(sender, connection, **kwargs):
+    """Activate foreign key constraints when SQLite connection is created"""
+    if connection.vendor == 'sqlite':
+        cursor = connection.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
+        cursor.execute('PRAGMA journal_mode = WAL;')
+        cursor.execute('PRAGMA cache_size = -64000;')
+
+connection_created.connect(activate_foreign_keys)
 
 
 # Password validation
@@ -128,37 +146,53 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Media files (User uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True  # 보안상 특정 도메인만 허용하는 것이 좋음
+CORS_ALLOW_ALL_ORIGINS = True  # For security, it's better to allow only specific domains
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',  # ✅ JWT 인증 활성화
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # ✅ Enable JWT authentication
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',  # ✅ 인증된 사용자만 API 사용 가능
+        'rest_framework.permissions.IsAuthenticated',  # ✅ Only authenticated users can use the API
     ],
+    # flightinfo app permission setting - accessible without authentication
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
+}
+
+# Each app permission setting
+REST_FRAMEWORK_CUSTOM = {
+    'flightinfo': {
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.AllowAny',  # flight info API is accessible without authentication
+        ],
+    },
 }
 
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),  # ✅ 1시간으로 증가
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # ✅ 7일 동안 유효
-    "ROTATE_REFRESH_TOKENS": True,  # ✅ Refresh Token 사용 시 새로운 Access Token 발급
-    "BLACKLIST_AFTER_ROTATION": True,  # ✅ 이전 Refresh Token은 블랙리스트 처리
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),  # ✅ Increased to 1 hour
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # ✅ Valid for 7 days
+    "ROTATE_REFRESH_TOKENS": True,  # ✅ Issue new Access Token when Refresh Token is used
+    "BLACKLIST_AFTER_ROTATION": True,  # ✅ Blacklist previous Refresh Token
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8080",  # Vue.js 프론트엔드
-    "http://127.0.0.1:8080",  # Vue.js 프론트엔드
+    "http://localhost:8080",  # Vue.js frontend
+    "http://127.0.0.1:8080",  # Vue.js frontend
 ]
 
 CORS_ALLOW_METHODS = ["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"]

@@ -16,7 +16,9 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.http import JsonResponse  # ✅ JsonResponse import 추가
+from django.http import JsonResponse  # ✅ Added JsonResponse import
+from django.conf import settings
+from django.conf.urls.static import static
 
 
 def root(request):
@@ -24,12 +26,16 @@ def root(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', root),  # 루트 URL 추가
+    path('', root),  # Added root URL
     path('api/', include('api.urls')),
-    path('api/accounts/', include('accounts.urls')),
-    path('api/community/', include('community.urls')),  # ✅ community 앱의 API 경로 추가
-    path('api/flights/', include('flight.urls')),  # ✅ flights API 추가
-    path('api/destinations/', include('destinations.urls')),
-    path('api/mypage/', include('mypage.urls')),
-    path('api/planner/', include('planner.urls')),  # ✅ planner 앱의 API 경로 추가
+    path('api/accounts/', include('accounts.urls')), # ✅ Added API path for accounts app
+    path('api/community/', include('community.urls')),  # ✅ Added API path for community app
+    path('api/destinations/', include('destinations.urls')), # ✅ Added API path for destinations app
+    path('api/mypage/', include('mypage.urls')), # ✅ Added API path for my page app
+    path('api/planner/', include('planner.urls')),  # ✅ Added API path for planner app
+    path('api/flights/', include('flight.urls')),  # ✅ Added API path for flight app
 ]
+
+# Add media files URL pattern in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,6 +1,6 @@
 """
-이 스크립트는 기존 좋아요 데이터를 기반으로 Location 모델의 likes_count 필드를 업데이트합니다.
-Django 쉘에서 실행하세요:
+This script updates the likes_count field in the Location model based on existing like data.
+Run it in the Django shell:
 python manage.py shell < destinations/update_likes_count.py
 """
 
@@ -8,25 +8,25 @@ from django.db.models import Count
 from destinations.models import Location
 
 def update_likes_count():
-    print("좋아요 수 업데이트를 시작합니다...")
+    print("Starting likes count update...")
     
-    # 각 여행지의 좋아요 수를 계산
+    # Calculate the number of likes for each location
     locations_with_counts = Location.objects.annotate(count=Count('likes'))
     
-    # 업데이트 카운터
+    # Update counter
     updated = 0
     
-    # 각 여행지의 likes_count 필드 업데이트
+    # Update the likes_count field for each location
     for location in locations_with_counts:
         location.likes_count = location.count
         location.save(update_fields=['likes_count'])
         updated += 1
         
-        # 진행 상황 출력 (100개마다)
+        # Print progress (every 100 locations)
         if updated % 100 == 0:
-            print(f"{updated}개의 여행지 업데이트 완료...")
+            print(f"{updated} locations updated...")
     
-    print(f"총 {updated}개의 여행지의 좋아요 수가 업데이트되었습니다.")
+    print(f"Likes count updated for a total of {updated} locations.")
 
 if __name__ == "__main__":
     update_likes_count() 

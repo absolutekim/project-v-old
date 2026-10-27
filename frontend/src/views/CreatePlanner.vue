@@ -7,7 +7,7 @@
       <p>Loading Planner Info...</p>
     </div>
     
-    <!-- 플래너 선택 및 생성 -->
+    <!-- Planner selection and creation section -->
     <div v-else class="planner-selection">
       <div v-if="userPlanners.length > 0" class="planner-list">
         <h2>Your Planner</h2>
@@ -27,7 +27,7 @@
         </div>
       </div>
       
-      <!-- 플래너 생성 폼 -->
+      <!-- Planner creation form -->
       <div v-if="!currentPlanner" class="create-planner-form">
         <h2>Create New Planner</h2>
         <div class="form-group">
@@ -52,7 +52,7 @@
         <button @click="createPlanner" class="btn-primary">Create Planner</button>
       </div>
       
-      <!-- 플래너 관리 화면 -->
+      <!-- Planner management screen -->
       <div v-else class="planner-management">
         <div class="planner-header">
           <div>
@@ -69,9 +69,9 @@
         </div>
         
         <div class="planner-content">
-          <!-- 좌측: 플래너 영역 -->
+          <!-- Left side: Planner area -->
           <div class="planner-area">
-            <h3>내 여행 계획 <span class="item-count">({{ plannerItems.length }}/10)</span></h3>
+            <h3>My Travel Plan <span class="item-count">({{ plannerItems.length }}/10)</span></h3>
             <div 
               class="planner-drop-area"
               @dragover.prevent
@@ -99,7 +99,7 @@
                         {{ getLocationString(element.location_details) }}
                       </p>
                     </div>
-                    <button @click="removeFromPlanner(element)" class="btn-remove" title="여행지 제거">
+                    <button @click="removeFromPlanner(element)" class="btn-remove" title="Remove destination">
                       <i class="fas fa-trash"></i>
                     </button>
                   </div>
@@ -108,7 +108,7 @@
             </div>
           </div>
           
-          <!-- 우측: 여행지 검색 및 목록 -->
+          <!-- Right side: Destination search and listing -->
           <div class="destinations-area">
             <h3>Search Destinations</h3>
             <div class="filter-controls">
@@ -180,38 +180,52 @@ import axios from 'axios';
 import { ref, computed, onMounted, watch } from 'vue';
 import draggable from 'vuedraggable';
 
+/**
+ * Travel Planner Component
+ * Allows users to create, manage, and organize their travel itineraries
+ * Features:
+ * - Creating new planners with title and description
+ * - Viewing and selecting existing planners
+ * - Adding destinations to planners via search or drag-and-drop
+ * - Reordering destinations within a planner
+ * - Deleting planners
+ */
 export default {
   name: 'CreatePlanner',
   components: {
     draggable
   },
   setup() {
-    // 상태 변수
-    const destinations = ref([]);
-    const countries = ref([]);
-    const searchQuery = ref('');
-    const selectedCountry = ref('');
-    const isLoading = ref(true);
-    const currentPlanner = ref(null);
-    const plannerItems = ref([]);
-    const originalOrder = ref([]);
+    // State variables
+    const destinations = ref([]); // Search results for destinations
+    const countries = ref([]); // List of available countries for filtering
+    const searchQuery = ref(''); // User's destination search query
+    const selectedCountry = ref(''); // Selected country filter
+    const isLoading = ref(true); // Loading state for destinations
+    const currentPlanner = ref(null); // Currently selected planner
+    const plannerItems = ref([]); // Destinations in the current planner
+    const originalOrder = ref([]); // Original order of planner items for change detection
     const newPlanner = ref({
       title: '',
       description: ''
-    });
-    const draggedDestination = ref(null);
-    const userPlanners = ref([]);  // 사용자의 플래너 목록
-    const loadingPlanners = ref(false);  // 플래너 로딩 상태
-    const searchTimeout = ref(null); // 검색 디바운싱을 위한 타임아웃
+    }); // New planner form data
+    const draggedDestination = ref(null); // Currently dragged destination
+    const userPlanners = ref([]);  // List of user's planners
+    const loadingPlanners = ref(false);  // Planner loading state
+    const searchTimeout = ref(null); // Timeout for search debouncing
     
-    // 필터링된 여행지 목록
+    /**
+     * Filtered destinations based on selected country
+     * The destination list is already filtered by search term from the backend
+     * @returns {Array} Filtered destination list
+     */
     const filteredDestinations = computed(() => {
       let filtered = destinations.value;
       
-      // 검색어로 필터링 (백엔드에서 이미 수행되므로 제거)
-      // 백엔드에서 이미 검색어로 필터링된 결과를 받아오므로 여기서는 필터링하지 않음
+      // Filter by search term (already done by backend)
+      // We don't filter by search term here as the backend already returns filtered results
       
-      // 국가로 필터링
+      // Filter by country
       if (selectedCountry.value) {
         filtered = filtered.filter(dest => 
           dest.country === selectedCountry.value
@@ -221,7 +235,11 @@ export default {
       return filtered;
     });
     
-    // 순서 변경 여부 확인
+    /**
+     * Check if planner item order has changed from original
+     * Used to determine if save button should be enabled
+     * @returns {boolean} True if order has changed
+     */
     const hasOrderChanged = computed(() => {
       if (plannerItems.value.length !== originalOrder.value.length) return true;
       
@@ -232,50 +250,58 @@ export default {
       return false;
     });
     
-    // 사용자의 플래너 목록 가져오기
+    /**
+     * Fetch user's planner list from the API
+     * Loads all planners belonging to the current user
+     */
     const fetchUserPlanners = async () => {
       try {
         loadingPlanners.value = true;
         const response = await axios.get('/api/planner/planners/');
         userPlanners.value = response.data;
         
-        // 플래너가 있으면 첫 번째 플래너 선택
+        // Select first planner if available
         if (userPlanners.value.length > 0) {
           currentPlanner.value = userPlanners.value[0];
         }
         
         loadingPlanners.value = false;
       } catch (error) {
-        console.error('플래너 목록을 불러오는데 실패했습니다:', error);
         loadingPlanners.value = false;
       }
     };
     
-    // URL 쿼리 파라미터에서 여행지 ID 가져오기
+    /**
+     * Handle destination ID from URL query parameter
+     * Used when adding a destination to planner from other pages
+     */
     const handleDestinationFromQuery = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const destinationId = urlParams.get('destination');
       
       if (destinationId && currentPlanner.value) {
         try {
-          // 여행지 정보 가져오기
+          // Get destination information
           const response = await axios.get(`/api/destinations/${destinationId}/`);
           const destination = response.data;
           
-          // 플래너에 여행지 추가
+          // Add destination to planner
           addToPlanner(destination);
           
-          // URL에서 쿼리 파라미터 제거
+          // Remove query parameter from URL
           const url = new URL(window.location);
           url.searchParams.delete('destination');
           window.history.replaceState({}, '', url);
         } catch (error) {
-          console.error('여행지 정보를 불러오는데 실패했습니다:', error);
+          // Failed to load destination information
         }
       }
     };
     
-    // 여행지 목록 가져오기 (검색용)
+    /**
+     * Fetch destinations matching the search query
+     * Uses NLP/sentiment analysis API for enhanced search capabilities
+     */
     const fetchDestinations = async () => {
       if (searchQuery.value.trim() === '') {
         destinations.value = [];
@@ -285,34 +311,29 @@ export default {
       
       try {
         isLoading.value = true;
-        console.log(`검색 쿼리: "${searchQuery.value}", 결과 제한: 20개`);
         const response = await axios.get(`/api/destinations/search/nlp/?query=${encodeURIComponent(searchQuery.value)}&limit=20`);
         
         if (response.data && response.data.results) {
           destinations.value = response.data.results;
-          console.log(`검색 결과: ${destinations.value.length}개 항목 받음`);
           
-          // 결과가 예상보다 적을 경우 (10개 미만) 자동으로 다시 검색 시도
+          // Retry if results are fewer than expected (less than 10) but there are more available
           if (destinations.value.length < 10 && response.data.results_count > 10) {
-            console.log('검색 결과가 예상보다 적습니다. 다시 시도합니다...');
             setTimeout(async () => {
               try {
                 const retryResponse = await axios.get(`/api/destinations/search/nlp/?query=${encodeURIComponent(searchQuery.value)}&limit=20&retry=true`);
                 if (retryResponse.data && retryResponse.data.results && retryResponse.data.results.length > destinations.value.length) {
                   destinations.value = retryResponse.data.results;
-                  console.log(`재시도 검색 결과: ${destinations.value.length}개 항목 받음`);
                 }
               } catch (retryError) {
-                console.error('재시도 검색 중 오류 발생:', retryError);
+                // Error during retry search
               }
             }, 500);
           }
         } else {
           destinations.value = [];
-          console.log('검색 결과 없음');
         }
         
-        // 국가 목록 추출
+        // Extract country list for filtering
         const countrySet = new Set();
         destinations.value.forEach(dest => {
           if (dest.country) countrySet.add(dest.country);
@@ -321,20 +342,19 @@ export default {
         
         isLoading.value = false;
       } catch (error) {
-        console.error('여행지를 불러오는데 실패했습니다:', error);
         isLoading.value = false;
       }
     };
     
-    // 검색어 변경 시 여행지 목록 가져오기 (디바운싱 적용)
+    // Watch for search query changes with debouncing
     watch(searchQuery, () => {
-      // 이전 타임아웃 취소
+      // Cancel previous timeout
       if (searchTimeout.value) {
         clearTimeout(searchTimeout.value);
       }
       
       if (searchQuery.value.trim().length >= 2) {
-        // 500ms 디바운싱 적용
+        // Apply 500ms debouncing to prevent excess API calls
         searchTimeout.value = setTimeout(() => {
           fetchDestinations();
         }, 500);
@@ -343,10 +363,13 @@ export default {
       }
     });
     
-    // 플래너 생성
+    /**
+     * Create a new planner
+     * Sends planner data to the API and updates the UI
+     */
     const createPlanner = async () => {
       if (!newPlanner.value.title) {
-        alert('플래너 제목을 입력해주세요.');
+        alert('Please enter a planner title.');
         return;
       }
       
@@ -356,30 +379,40 @@ export default {
           description: newPlanner.value.description
         });
         
+        // Add newly created planner to userPlanners list
+        userPlanners.value.unshift(response.data);
+        
+        // Set newly created planner as current planner
         currentPlanner.value = response.data;
         newPlanner.value = { title: '', description: '' };
       } catch (error) {
-        console.error('플래너 생성에 실패했습니다:', error);
-        alert('플래너 생성에 실패했습니다. 다시 시도해주세요.');
+        alert('Failed to create planner. Please try again.');
       }
     };
     
-    // 플래너 초기화
+    /**
+     * Reset planner selection
+     * Clears current planner and items
+     */
     const resetPlanner = () => {
       currentPlanner.value = null;
       plannerItems.value = [];
       originalOrder.value = [];
     };
     
-    // 플래너에 여행지 추가
+    /**
+     * Add destination to current planner
+     * Limits to 10 destinations per planner
+     * @param {Object} destination - Destination object to add
+     */
     const addToPlanner = async (destination) => {
       if (plannerItems.value.length >= 10) {
-        alert('플래너에는 최대 10개의 여행지만 추가할 수 있습니다.');
+        alert('You can add a maximum of 10 destinations to your planner.');
         return;
       }
       
       if (isDestinationInPlanner(destination)) {
-        alert('이미 플래너에 추가된 여행지입니다.');
+        alert('This destination is already in your planner.');
         return;
       }
       
@@ -390,7 +423,7 @@ export default {
           order: plannerItems.value.length
         });
         
-        // 응답에서 location_details가 없을 경우 추가
+        // Add location_details if not present in response
         if (!response.data.location_details) {
           response.data.location_details = destination;
         }
@@ -398,49 +431,50 @@ export default {
         plannerItems.value.push(response.data);
         updateOriginalOrder();
       } catch (error) {
-        console.error('여행지 추가에 실패했습니다:', error);
-        alert('여행지 추가에 실패했습니다. 다시 시도해주세요.');
+        alert('Failed to add destination. Please try again.');
       }
     };
     
-    // 플래너에서 여행지 제거
+    /**
+     * Remove destination from planner
+     * @param {Object} item - Planner item to remove
+     */
     const removeFromPlanner = async (item) => {
       try {
         await axios.delete(`/api/planner/planner-items/${item.id}/`);
         plannerItems.value = plannerItems.value.filter(i => i.id !== item.id);
         
-        // 순서 업데이트
+        // Update order
         plannerItems.value.forEach((item, index) => {
           item.order = index;
         });
         
         updateOriginalOrder();
       } catch (error) {
-        console.error('여행지 제거에 실패했습니다:', error);
-        alert('여행지 제거에 실패했습니다. 다시 시도해주세요.');
+        alert('Failed to remove destination. Please try again.');
       }
     };
     
-    // 플래너 항목 순서 저장
+    /**
+     * Save planner item order to the server
+     * Updates item order after drag-and-drop reordering
+     */
     const savePlannerOrder = async () => {
       try {
-        // 플래너 항목이 없으면 저장할 필요 없음
+        // No need to save if there are no items
         if (plannerItems.value.length === 0) {
-          alert('저장할 여행지가 없습니다.');
+          alert('There are no destinations to save.');
           return;
         }
         
-        // 저장 전에 서버에서 최신 데이터를 가져와 동기화
-        console.log('서버에서 최신 데이터를 가져와 동기화합니다...');
+        // Sync with server data before saving
         await fetchPlannerItems();
         
-        // 서버에 저장할 항목 데이터 생성
+        // Create item data to save
         const items = plannerItems.value.map((item, index) => ({
           id: item.id,
           order: index
         }));
-        
-        console.log('저장할 데이터:', { items });
         
         await axios.post('/api/planner/planner-items/reorder/', {
           items: items
@@ -448,64 +482,54 @@ export default {
         
         updateOriginalOrder();
         
-        // 플래너 목록 다시 불러오기
+        // Reload planner list
         await fetchUserPlanners();
         
-        alert('플래너 순서가 저장되었습니다.');
+        alert('Planner order has been saved.');
       } catch (error) {
-        console.error('플래너 순서 저장에 실패했습니다:', error);
         if (error.response) {
-          console.error('응답 데이터:', error.response.data);
-          console.error('상태 코드:', error.response.status);
-          
-          // 항목을 찾을 수 없는 경우 플래너 항목을 다시 불러옴
-          if (error.response.status === 400 && error.response.data.detail === '일부 항목을 찾을 수 없습니다.') {
-            alert('일부 항목을 찾을 수 없습니다. 플래너 항목을 다시 불러옵니다.');
+          // If items not found, reload planner items
+          if (error.response.status === 400 && error.response.data.detail === 'Some items could not be found.') {
+            alert('Some items could not be found. Reloading planner items.');
             await fetchPlannerItems();
             return;
           }
         }
-        alert('플래너 순서 저장에 실패했습니다. 다시 시도해주세요.');
+        alert('Failed to save planner order. Please try again.');
       }
     };
     
-    // 플래너 항목 가져오기
+    /**
+     * Fetch items for the currently selected planner
+     * Loads destination details for each planner item
+     */
     const fetchPlannerItems = async () => {
       if (!currentPlanner.value) return;
       
       try {
-        console.log(`플래너 ID ${currentPlanner.value.id}의 항목을 불러오는 중...`);
         const response = await axios.get(`/api/planner/planners/${currentPlanner.value.id}/items/`);
         
-        // 응답 데이터 로깅
-        console.log('서버에서 받은 플래너 항목:', response.data);
-        
-        // 항목 ID 목록 비교
-        const oldIds = plannerItems.value.map(item => item.id);
-        const newIds = response.data.map(item => item.id);
-        
-        console.log('기존 항목 ID:', oldIds);
-        console.log('새 항목 ID:', newIds);
-        
-        // 데이터 업데이트
+        // Update data
         plannerItems.value = response.data;
         updateOriginalOrder();
       } catch (error) {
-        console.error('플래너 항목을 불러오는데 실패했습니다:', error);
-        if (error.response) {
-          console.error('응답 데이터:', error.response.data);
-          console.error('상태 코드:', error.response.status);
-        }
-        alert('플래너 항목을 불러오는데 실패했습니다. 페이지를 새로고침하세요.');
+        alert('Failed to load planner items. Please refresh the page.');
       }
     };
     
-    // 원본 순서 업데이트
+    /**
+     * Update original order to match current order
+     * Used to track changes for the save button
+     */
     const updateOriginalOrder = () => {
       originalOrder.value = plannerItems.value.map(item => item.id);
     };
     
-    // 여행지가 이미 플래너에 있는지 확인
+    /**
+     * Check if destination is already in planner
+     * @param {Object} destination - Destination to check
+     * @returns {boolean} True if destination exists in planner
+     */
     const isDestinationInPlanner = (destination) => {
       return plannerItems.value.some(item => 
         item.location === destination.id || 
@@ -513,23 +537,34 @@ export default {
       );
     };
     
-    // 위치 문자열 생성
+    /**
+     * Format location string from destination data
+     * @param {Object} destination - Destination object with location data
+     * @returns {string} Formatted location string (city, country)
+     */
     const getLocationString = (destination) => {
       const parts = [];
       if (destination.city) parts.push(destination.city);
       if (destination.country) parts.push(destination.country);
       
-      return parts.join(', ') || '위치 정보 없음';
+      return parts.join(', ') || 'No location information';
     };
     
-    // 드래그 시작 이벤트 핸들러
+    /**
+     * Handle drag start event for drag-and-drop
+     * @param {Event} event - Drag event
+     * @param {Object} destination - Dragged destination
+     */
     // eslint-disable-next-line no-unused-vars
     const onDragStart = (event, destination) => {
       draggedDestination.value = destination;
       event.dataTransfer.effectAllowed = 'move';
     };
     
-    // 드롭 이벤트 핸들러
+    /**
+     * Handle drop event for drag-and-drop
+     * @param {Event} event - Drop event
+     */
     // eslint-disable-next-line no-unused-vars
     const onDrop = (event) => {
       if (draggedDestination.value) {
@@ -538,48 +573,50 @@ export default {
       }
     };
     
-    // 드래그 앤 드롭 변경 이벤트 핸들러
+    /**
+     * Handle draggable component change event
+     * Updates item order after drag-and-drop within the list
+     */
     const onDraggableChange = () => {
-      // 순서 업데이트
+      // Update order
       plannerItems.value.forEach((item, index) => {
         item.order = index;
       });
       
-      console.log('드래그 앤 드롭으로 항목 순서가 변경되었습니다.');
-      console.log('변경된 순서:', plannerItems.value.map(item => item.id));
+      // Don't update originalOrder to compare with hasOrderChanged
+      // This will return true to show that the save button is active
       
-      // 원본 순서와 비교하기 위해 originalOrder는 업데이트하지 않음
-      // 이렇게 하면 hasOrderChanged가 true를 반환하여 저장 버튼이 활성화됨
-      
-      // 자동 저장 기능 (선택적으로 활성화)
+      // Auto save feature (optionally enabled)
       // savePlannerOrder();
     };
     
-    // 컴포넌트 마운트 시 사용자의 플래너 목록 가져오기
+    // Load user's planner list on mount
     onMounted(() => {
       fetchUserPlanners().then(() => {
-        // 플래너 목록을 가져온 후 URL 쿼리 파라미터 처리
+        // Process URL query parameters after loading planner list
         handleDestinationFromQuery();
       });
     });
     
-    // 현재 플래너 변경 시 플래너 항목 가져오기
+    // Watch for current planner changes
     watch(currentPlanner, () => {
       fetchPlannerItems();
     });
     
-    // 플래너 삭제
+    /**
+     * Delete the current planner
+     * Removes planner and all its items after confirmation
+     */
     const deletePlanner = async () => {
-      if (confirm('정말로 이 플래너를 삭제하시겠습니까? 삭제된 플래너는 복구할 수 없습니다.')) {
+      if (confirm('Are you sure you want to delete this planner? Deleted planners cannot be recovered.')) {
         try {
           await axios.delete(`/api/planner/planners/${currentPlanner.value.id}/`);
           currentPlanner.value = null;
-          // 플래너 목록 다시 불러오기
+          // Reload planner list
           await fetchUserPlanners();
-          alert('플래너가 성공적으로 삭제되었습니다.');
+          alert('Planner has been successfully deleted.');
         } catch (error) {
-          console.error('플래너 삭제에 실패했습니다:', error);
-          alert('플래너 삭제에 실패했습니다. 다시 시도해주세요.');
+          alert('Failed to delete planner. Please try again.');
         }
       }
     };
@@ -616,19 +653,21 @@ export default {
 </script>
 
 <style scoped>
+/* Main container - holds the entire planner interface */
 .planner-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
 }
 
+/* Page title styling - main heading for the planner page */
 .page-title {
   font-size: 2rem;
   margin-bottom: 2rem;
   color: #2c3e50;
 }
 
-/* 플래너 생성 폼 */
+/* Planner creation form - container for the new planner form */
 .create-planner-form {
   max-width: 600px;
   margin: 0 auto;
@@ -638,15 +677,18 @@ export default {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+/* Creation form heading styling */
 .create-planner-form h2 {
   margin-bottom: 1.5rem;
   color: #2c3e50;
 }
 
+/* Form group - container for each form field */
 .form-group {
   margin-bottom: 1.5rem;
 }
 
+/* Form label styling */
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;
@@ -654,6 +696,7 @@ export default {
   color: #2c3e50;
 }
 
+/* Form control - styling for inputs and textareas */
 .form-control {
   width: 100%;
   padding: 0.75rem;
@@ -662,12 +705,13 @@ export default {
   font-size: 1rem;
 }
 
+/* Textarea specific styling */
 textarea.form-control {
   min-height: 100px;
   resize: vertical;
 }
 
-/* 플래너 관리 화면 */
+/* Planner management screen - container for active planner view */
 .planner-management {
   background-color: #fff;
   border-radius: 8px;
@@ -675,28 +719,32 @@ textarea.form-control {
   overflow: hidden;
 }
 
+/* Planner header - contains title and action buttons */
 .planner-header {
   padding: 1.5rem;
   border-bottom: 1px solid #eee;
 }
 
+/* Planner title styling */
 .planner-header h2 {
   margin-bottom: 0.5rem;
   color: #2c3e50;
 }
 
+/* Planner action buttons container */
 .planner-actions {
   margin-top: 1rem;
   display: flex;
   gap: 1rem;
 }
 
+/* Planner content - main area with two columns */
 .planner-content {
   display: flex;
   min-height: 600px;
 }
 
-/* 좌측: 플래너 영역 */
+/* Left side: Planner area - contains the current planner items */
 .planner-area {
   flex: 1;
   padding: 1.5rem;
@@ -705,17 +753,20 @@ textarea.form-control {
   flex-direction: column;
 }
 
+/* Planner area heading */
 .planner-area h3 {
   margin-bottom: 1rem;
   color: #2c3e50;
 }
 
+/* Item count badge - shows number of destinations in planner */
 .item-count {
   font-size: 0.9rem;
   color: #666;
   font-weight: normal;
 }
 
+/* Drop area - target for drag and drop operations */
 .planner-drop-area {
   flex: 1;
   border: 2px dashed #ddd;
@@ -726,6 +777,7 @@ textarea.form-control {
   flex-direction: column;
 }
 
+/* Empty planner state - shown when no destinations added */
 .empty-planner {
   flex: 1;
   display: flex;
@@ -736,16 +788,19 @@ textarea.form-control {
   text-align: center;
 }
 
+/* Small text in empty planner message */
 .empty-planner .small {
   font-size: 0.9rem;
   margin-top: 0.5rem;
 }
 
+/* Container for planner item list */
 .planner-items-list {
   flex: 1;
   overflow-y: auto;
 }
 
+/* Individual planner item styling */
 .planner-item {
   display: flex;
   align-items: center;
@@ -756,6 +811,7 @@ textarea.form-control {
   cursor: move;
 }
 
+/* Destination image container in planner item */
 .item-image {
   width: 60px;
   height: 60px;
@@ -764,27 +820,32 @@ textarea.form-control {
   overflow: hidden;
 }
 
+/* Image styling within item image container */
 .item-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+/* Destination info container */
 .item-info {
   flex: 1;
 }
 
+/* Destination name in planner item */
 .item-info h4 {
   margin: 0 0 0.25rem;
   font-size: 1rem;
 }
 
+/* Location text styling */
 .location {
   font-size: 0.9rem;
   color: #666;
   margin: 0;
 }
 
+/* Remove button for planner items */
 .btn-remove {
   background: transparent;
   border: none;
@@ -801,11 +862,12 @@ textarea.form-control {
   transition: background-color 0.2s;
 }
 
+/* Hover effect for remove button */
 .btn-remove:hover {
   background-color: rgba(231, 76, 60, 0.1);
 }
 
-/* 우측: 여행지 목록 */
+/* Right side: Destination search and listing */
 .destinations-area {
   flex: 1;
   padding: 1.5rem;
@@ -813,21 +875,25 @@ textarea.form-control {
   flex-direction: column;
 }
 
+/* Destination area heading */
 .destinations-area h3 {
   margin-bottom: 1rem;
   color: #2c3e50;
 }
 
+/* Filter and search controls container */
 .filter-controls {
   display: flex;
   gap: 1rem;
   margin-bottom: 1rem;
 }
 
+/* Search box container */
 .search-box {
   flex: 1;
 }
 
+/* Search input styling */
 .search-input {
   width: 100%;
   padding: 0.75rem;
@@ -836,6 +902,7 @@ textarea.form-control {
   font-size: 1rem;
 }
 
+/* Country filter dropdown styling */
 .country-select {
   padding: 0.75rem;
   border: 1px solid #ddd;
@@ -844,6 +911,7 @@ textarea.form-control {
   min-width: 150px;
 }
 
+/* Destination search results grid */
 .destinations-list {
   flex: 1;
   overflow-y: auto;
@@ -855,6 +923,7 @@ textarea.form-control {
   grid-auto-rows: min-content;
 }
 
+/* Individual destination card in search results */
 .destination-card {
   background-color: #fff;
   border-radius: 8px;
@@ -868,26 +937,31 @@ textarea.form-control {
   flex-direction: column;
 }
 
+/* Destination image container */
 .destination-image {
   height: 120px;
   overflow: hidden;
 }
 
+/* Image styling within destination card */
 .destination-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+/* Destination info container */
 .destination-info {
   padding: 1rem;
 }
 
+/* Destination name styling */
 .destination-info h4 {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
 }
 
+/* Add to planner button */
 .btn-add {
   position: absolute;
   top: 0.5rem;
@@ -905,11 +979,13 @@ textarea.form-control {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
+/* Disabled state for add button */
 .btn-add:disabled {
   background-color: #ccc;
   cursor: not-allowed;
 }
 
+/* No search results message */
 .no-results, .loading {
   grid-column: 1 / -1;
   padding: 2rem;
@@ -917,6 +993,7 @@ textarea.form-control {
   color: #666;
 }
 
+/* Loading indicator container */
 .loading {
   display: flex;
   flex-direction: column;
@@ -924,6 +1001,7 @@ textarea.form-control {
   justify-content: center;
 }
 
+/* Loading spinner animation */
 .spinner {
   width: 40px;
   height: 40px;
@@ -934,11 +1012,12 @@ textarea.form-control {
   margin-bottom: 1rem;
 }
 
+/* Spinner animation keyframes */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* 버튼 스타일 */
+/* Primary button styling - for main actions */
 .btn-primary {
   background-color: #3498db;
   color: white;
@@ -950,15 +1029,18 @@ textarea.form-control {
   transition: background-color 0.2s;
 }
 
+/* Hover effect for primary button */
 .btn-primary:hover {
   background-color: #2980b9;
 }
 
+/* Disabled state for primary button */
 .btn-primary:disabled {
   background-color: #95a5a6;
   cursor: not-allowed;
 }
 
+/* Secondary button styling - for secondary actions */
 .btn-secondary {
   background-color: #ecf0f1;
   color: #2c3e50;
@@ -970,10 +1052,12 @@ textarea.form-control {
   transition: background-color 0.2s;
 }
 
+/* Hover effect for secondary button */
 .btn-secondary:hover {
   background-color: #dde4e6;
 }
 
+/* Danger button styling - for destructive actions */
 .btn-danger {
   background-color: #e74c3c;
   color: white;
@@ -985,24 +1069,28 @@ textarea.form-control {
   transition: background-color 0.2s;
 }
 
+/* Hover effect for danger button */
 .btn-danger:hover {
   background-color: #c0392b;
 }
 
-/* 플래너 선택 및 목록 */
+/* Planner selection container */
 .planner-selection {
   margin-bottom: 2rem;
 }
 
+/* Planner list container */
 .planner-list {
   margin-bottom: 2rem;
 }
 
+/* Planner list heading */
 .planner-list h2 {
   margin-bottom: 1rem;
   color: #2c3e50;
 }
 
+/* Planner tabs container - for switching between planners */
 .planner-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1010,6 +1098,7 @@ textarea.form-control {
   margin-bottom: 1.5rem;
 }
 
+/* Individual planner tab button */
 .planner-tab {
   background-color: #f8f9fa;
   border: 1px solid #ddd;
@@ -1020,16 +1109,19 @@ textarea.form-control {
   transition: all 0.2s;
 }
 
+/* Active planner tab styling */
 .planner-tab.active {
   background-color: #3498db;
   color: white;
   border-color: #3498db;
 }
 
+/* Hover effect for inactive planner tabs */
 .planner-tab:hover:not(.active) {
   background-color: #e9ecef;
 }
 
+/* Item count within planner tab */
 .planner-tab .item-count {
   font-size: 0.8rem;
   color: inherit;
@@ -1037,21 +1129,25 @@ textarea.form-control {
   margin-left: 0.25rem;
 }
 
+/* New planner tab button styling */
 .planner-tab.new-planner {
   background-color: #27ae60;
   color: white;
   border-color: #27ae60;
 }
 
+/* Hover effect for new planner tab */
 .planner-tab.new-planner:hover {
   background-color: #219653;
 }
 
+/* Planner description text styling */
 .planner-description {
   color: #666;
   margin-top: 0.5rem;
 }
 
+/* Search prompt - shown when search input is too short */
 .search-prompt {
   grid-column: 1 / -1;
   padding: 2rem;
@@ -1061,26 +1157,31 @@ textarea.form-control {
   border-radius: 8px;
 }
 
-/* 반응형 스타일 */
+/* Responsive styles for smaller screens */
 @media (max-width: 768px) {
+  /* Stack planner tabs vertically on small screens */
   .planner-tabs {
     flex-direction: column;
   }
   
+  /* Full width tabs on small screens */
   .planner-tab {
     width: 100%;
   }
   
+  /* Stack planner content areas vertically */
   .planner-content {
     flex-direction: column;
   }
   
+  /* Adjust planner area and destinations area for mobile */
   .planner-area, .destinations-area {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #eee;
   }
   
+  /* Stack filter controls vertically */
   .filter-controls {
     flex-direction: column;
   }

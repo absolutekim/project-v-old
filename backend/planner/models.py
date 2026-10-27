@@ -4,35 +4,37 @@ from destinations.models import Location
 
 class Planner(models.Model):
     """
-    사용자가 생성한 여행 플래너
+    Travel planner created by users to organize their trip destinations.
+    A planner contains multiple locations organized in a specific order.
     """
-    id = models.AutoField(primary_key=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='planners')
-    title = models.CharField(max_length=100)
-    description = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    id = models.AutoField(primary_key=True)  # Primary key for the planner
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='planners')  # User who owns this planner
+    title = models.CharField(max_length=100)  # Title of the travel plan
+    description = models.TextField(blank=True, null=True)  # Optional description of the travel plan
+    created_at = models.DateTimeField(auto_now_add=True)  # When the planner was created
+    updated_at = models.DateTimeField(auto_now=True)  # When the planner was last updated
     
     def __str__(self):
-        return f"{self.user.username}의 플래너: {self.title}"
+        return f"{self.user.username}'s planner: {self.title}"
     
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created_at']  # Order planners by creation date, newest first
 
 class PlannerItem(models.Model):
     """
-    플래너에 추가된 여행지 항목
+    Individual destinations added to a travel planner.
+    Each item represents a location in the user's travel itinerary.
     """
-    id = models.AutoField(primary_key=True)
-    planner = models.ForeignKey(Planner, on_delete=models.CASCADE, related_name='items')
-    location = models.ForeignKey(Location, on_delete=models.CASCADE)
-    order = models.IntegerField(default=0)  # 여행지 순서
-    notes = models.TextField(blank=True, null=True)  # 여행지에 대한 메모
-    created_at = models.DateTimeField(auto_now_add=True)
+    id = models.AutoField(primary_key=True)  # Primary key for the planner item
+    planner = models.ForeignKey(Planner, on_delete=models.CASCADE, related_name='items')  # Reference to the parent planner
+    location = models.ForeignKey(Location, on_delete=models.CASCADE)  # The destination location
+    order = models.IntegerField(default=0)  # The sequence order of destinations
+    notes = models.TextField(blank=True, null=True)  # Optional notes about this destination
+    created_at = models.DateTimeField(auto_now_add=True)  # When this item was added to the planner
     
     def __str__(self):
-        return f"{self.planner.title} - {self.location.name} ({self.order}번째)"
+        return f"{self.planner.title} - {self.location.name} (order: {self.order})"
     
     class Meta:
-        ordering = ['order']
-        unique_together = ['planner', 'location']  # 같은 플래너에 같은 여행지 중복 방지
+        ordering = ['order']  # Order items by their sequence number
+        unique_together = ['planner', 'location']  # Prevent duplicate locations in the same planner

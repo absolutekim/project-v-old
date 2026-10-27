@@ -1,25 +1,39 @@
 <template>
+  <!-- Review list component to display reviews for a location -->
   <div class="review-list-container">
-    <h3 class="section-title">리뷰 ({{ reviews.length }})</h3>
+    <h3 class="section-title">Reviews ({{ reviews.length }})</h3>
     
+    <!-- Loading state -->
     <div v-if="isLoading" class="loading-container">
       <div class="spinner"></div>
-      <p>리뷰를 불러오는 중...</p>
+      <p>Loading reviews...</p>
     </div>
     
+    <!-- Empty state when no reviews exist -->
     <div v-else-if="reviews.length === 0" class="empty-state">
-      <p>아직 리뷰가 없습니다. 첫 번째 리뷰를 작성해보세요!</p>
+      <p>No reviews yet. Be the first to write a review!</p>
     </div>
     
+    <!-- Reviews list -->
     <div v-else class="reviews">
       <div v-for="review in reviews" :key="review.id" class="review-card">
+        <!-- Review header with user info and actions -->
         <div class="review-header">
           <div class="user-info">
-            <span class="username">{{ review.user.username }}</span>
-            <div class="rating">
-              <span v-for="star in 5" :key="star" class="star" :class="{ 'filled': star <= review.rating }">
-                <i class="fas fa-star"></i>
-              </span>
+            <!-- Add profile image -->
+            <div class="user-avatar">
+              <img v-if="review.author_profile_image" :src="review.author_profile_image" alt="User avatar">
+              <div v-else class="default-avatar">
+                <i class="fas fa-user"></i>
+              </div>
+            </div>
+            <div class="user-details">
+              <span class="username">{{ review.username }}</span>
+              <div class="rating">
+                <span v-for="star in 5" :key="star" class="star" :class="{ 'filled': star <= review.rating }">
+                  <i class="fas fa-star"></i>
+                </span>
+              </div>
             </div>
           </div>
           <div class="review-meta">
@@ -35,15 +49,18 @@
           </div>
         </div>
         
+        <!-- Review content -->
         <div class="review-content">
           <p>{{ review.content }}</p>
         </div>
         
+        <!-- Sentiment analysis results -->
         <div v-if="review.sentiment" class="review-sentiment" :class="getSentimentClass(review.sentiment)">
-          <span class="sentiment-label">감정 분석:</span>
+          <span class="sentiment-label">Sentiment:</span>
           <span class="sentiment-value">{{ getSentimentText(review.sentiment) }}</span>
         </div>
         
+        <!-- Keywords extracted from review -->
         <div v-if="review.keywords && review.keywords.length > 0" class="review-keywords">
           <span v-for="(keyword, index) in review.keywords" :key="index" class="keyword-tag">
             {{ keyword }}
@@ -52,9 +69,10 @@
       </div>
     </div>
     
+    <!-- Load more button -->
     <div v-if="hasMoreReviews" class="load-more">
       <button @click="loadMoreReviews" :disabled="isLoadingMore" class="load-more-button">
-        {{ isLoadingMore ? '불러오는 중...' : '더 보기' }}
+        {{ isLoadingMore ? 'Loading...' : 'Load More' }}
       </button>
     </div>
   </div>
@@ -64,6 +82,10 @@
 import axios from 'axios';
 import { useToast } from 'vue-toastification';
 
+/**
+ * Component for displaying a list of reviews for a location
+ * Includes pagination and review management actions
+ */
 export default {
   name: 'ReviewList',
   props: {
@@ -85,17 +107,14 @@ export default {
     const toast = useToast();
     return { toast };
   },
-  computed: {
-    currentUserId() {
-      // 로컬 스토리지에서 사용자 ID를 가져오는 로직으로 변경
-      // 현재는 간단히 null을 반환하고, 실제 구현은 백엔드 API를 통해 사용자 정보를 가져오는 방식으로 해야 함
-      return null;
-    }
-  },
   mounted() {
     this.fetchReviews();
   },
   methods: {
+    /**
+     * Fetch reviews for the specified location
+     * Retrieves the initial batch of reviews from the API
+     */
     async fetchReviews() {
       this.isLoading = true;
       
@@ -103,14 +122,20 @@ export default {
         const response = await axios.get(`http://localhost:8000/api/destinations/${this.locationId}/reviews/`);
         this.reviews = response.data.results;
         this.hasMoreReviews = this.reviews.length < response.data.count;
+        // Emit event with reviews data to parent component
+        this.$emit('reviews-loaded', this.reviews);
       } catch (error) {
-        console.error('리뷰 목록을 불러오는 중 오류 발생:', error);
-        this.toast.error('리뷰 목록을 불러오는 중 오류가 발생했습니다.');
+        console.error('Error loading review list:', error);
+        this.toast.error('An error occurred while loading reviews.');
       } finally {
         this.isLoading = false;
       }
     },
     
+    /**
+     * Load more reviews when paginating
+     * Fetches the next page of reviews and appends them to the list
+     */
     async loadMoreReviews() {
       if (this.isLoadingMore) return;
       
@@ -125,32 +150,76 @@ export default {
         this.reviews = [...this.reviews, ...response.data.results];
         this.hasMoreReviews = this.reviews.length < response.data.count;
       } catch (error) {
-        console.error('추가 리뷰를 불러오는 중 오류 발생:', error);
-        this.toast.error('추가 리뷰를 불러오는 중 오류가 발생했습니다.');
+        console.error('Error loading additional reviews:', error);
+        this.toast.error('An error occurred while loading more reviews.');
       } finally {
         this.isLoadingMore = false;
       }
     },
     
+    /**
+     * Format date in local format
+     * @param {string} dateString - ISO date string from API
+     * @returns {string} Formatted date string
+     */
     formatDate(dateString) {
       const date = new Date(dateString);
-      return date.toLocaleDateString('ko-KR', {
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
       });
     },
     
+    /**
+     * Check if the review belongs to the current user
+     * @param {Object} review - Review object
+     * @returns {boolean} True if the review belongs to the current user
+     */
     isCurrentUserReview(review) {
-      return this.currentUserId && review.user.id === this.currentUserId;
+      // Get the ID of the currently logged in user
+      const userId = this.getUserId();
+      // Compare using author_id
+      return userId && review.author_id === userId;
     },
     
+    /**
+     * Get current user ID from localStorage token
+     * @returns {number|null} User ID or null if not logged in
+     */
+    getUserId() {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+        
+        // Decode JWT token content (second part is payload)
+        const payload = token.split('.')[1];
+        const decoded = JSON.parse(atob(payload));
+        
+        // Return user_id if it exists
+        return decoded.user_id || null;
+      } catch (error) {
+        console.error('Error getting user ID:', error);
+        return null;
+      }
+    },
+    
+    /**
+     * Trigger edit mode for a review
+     * Emits an event to parent component to handle editing
+     * @param {Object} review - Review object to edit
+     */
     editReview(review) {
       this.$emit('edit-review', review);
     },
     
+    /**
+     * Delete a review
+     * Removes a review after confirmation
+     * @param {Object} review - Review object to delete
+     */
     async deleteReview(review) {
-      if (!confirm('정말로 이 리뷰를 삭제하시겠습니까?')) {
+      if (!confirm('Are you sure you want to delete this review?')) {
         return;
       }
       
@@ -162,15 +231,20 @@ export default {
           }
         });
         
-        // 리뷰 목록에서 삭제된 리뷰 제거
+        // Remove deleted review from the list
         this.reviews = this.reviews.filter(r => r.id !== review.id);
-        this.toast.success('리뷰가 삭제되었습니다.');
+        this.toast.success('Review deleted successfully.');
       } catch (error) {
-        console.error('리뷰 삭제 중 오류 발생:', error);
-        this.toast.error('리뷰 삭제 중 오류가 발생했습니다.');
+        console.error('Error deleting review:', error);
+        this.toast.error('An error occurred while deleting the review.');
       }
     },
     
+    /**
+     * Get CSS class for sentiment display
+     * @param {string} sentiment - Sentiment value (POSITIVE, NEGATIVE, NEUTRAL)
+     * @returns {string} CSS class name
+     */
     getSentimentClass(sentiment) {
       switch (sentiment) {
         case 'POSITIVE':
@@ -182,14 +256,19 @@ export default {
       }
     },
     
+    /**
+     * Get display text for sentiment value
+     * @param {string} sentiment - Sentiment value (POSITIVE, NEGATIVE, NEUTRAL)
+     * @returns {string} Display text
+     */
     getSentimentText(sentiment) {
       switch (sentiment) {
         case 'POSITIVE':
-          return '긍정적';
+          return 'Positive';
         case 'NEGATIVE':
-          return '부정적';
+          return 'Negative';
         default:
-          return '중립적';
+          return 'Neutral';
       }
     }
   }
@@ -197,10 +276,12 @@ export default {
 </script>
 
 <style scoped>
+/* Container for the review list */
 .review-list-container {
   margin-top: 30px;
 }
 
+/* Section title styling */
 .section-title {
   font-size: 20px;
   font-weight: 600;
@@ -208,6 +289,7 @@ export default {
   margin-bottom: 20px;
 }
 
+/* Loading spinner container */
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -215,6 +297,7 @@ export default {
   padding: 30px 0;
 }
 
+/* Spinner animation */
 .spinner {
   width: 40px;
   height: 40px;
@@ -230,6 +313,7 @@ export default {
   100% { transform: rotate(360deg); }
 }
 
+/* Empty state when no reviews exist */
 .empty-state {
   text-align: center;
   padding: 30px;
@@ -238,12 +322,14 @@ export default {
   color: #718096;
 }
 
+/* Reviews list container */
 .reviews {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
+/* Individual review card */
 .review-card {
   background-color: white;
   border-radius: 8px;
@@ -251,23 +337,63 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+/* Review header with user info and actions */
 .review-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
+/* User info section */
 .user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* User avatar container */
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+/* User avatar image */
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Default avatar when no image is available */
+.default-avatar {
+  width: 100%;
+  height: 100%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+}
+
+/* User details container */
+.user-details {
   display: flex;
   flex-direction: column;
 }
 
+/* Username styling */
 .username {
   font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 5px;
+  color: #333;
+  margin-bottom: 4px;
 }
 
+/* Star rating display */
 .rating {
   display: flex;
 }
@@ -281,23 +407,27 @@ export default {
   color: #f6ad55;
 }
 
+/* Review metadata container */
 .review-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 8px;
 }
 
+/* Date display */
 .date {
-  font-size: 12px;
-  color: #718096;
-  margin-bottom: 5px;
+  color: #666;
+  font-size: 0.85rem;
 }
 
+/* Review actions container */
 .review-actions {
   display: flex;
   gap: 5px;
 }
 
+/* Action button base styling */
 .action-button {
   background: none;
   border: none;
@@ -308,6 +438,7 @@ export default {
   transition: background-color 0.2s;
 }
 
+/* Edit button styling */
 .action-button.edit {
   color: #4299e1;
 }
@@ -316,6 +447,7 @@ export default {
   background-color: #ebf8ff;
 }
 
+/* Delete button styling */
 .action-button.delete {
   color: #e53e3e;
 }
@@ -324,6 +456,7 @@ export default {
   background-color: #fff5f5;
 }
 
+/* Review content styling */
 .review-content {
   font-size: 14px;
   line-height: 1.6;
@@ -331,6 +464,7 @@ export default {
   margin-bottom: 15px;
 }
 
+/* Sentiment analysis badge */
 .review-sentiment {
   display: inline-flex;
   align-items: center;
@@ -340,6 +474,7 @@ export default {
   margin-bottom: 10px;
 }
 
+/* Sentiment types */
 .review-sentiment.positive {
   background-color: #c6f6d5;
   color: #2f855a;
@@ -355,11 +490,13 @@ export default {
   color: #4a5568;
 }
 
+/* Sentiment label styling */
 .sentiment-label {
   font-weight: 500;
   margin-right: 5px;
 }
 
+/* Keywords tags container */
 .review-keywords {
   display: flex;
   flex-wrap: wrap;
@@ -367,6 +504,7 @@ export default {
   margin-top: 10px;
 }
 
+/* Individual keyword tag */
 .keyword-tag {
   background-color: #e2e8f0;
   color: #4a5568;
@@ -375,11 +513,13 @@ export default {
   font-size: 12px;
 }
 
+/* Load more container */
 .load-more {
   text-align: center;
   margin-top: 20px;
 }
 
+/* Load more button */
 .load-more-button {
   background-color: white;
   border: 1px solid #e2e8f0;
@@ -391,11 +531,13 @@ export default {
   transition: all 0.2s;
 }
 
+/* Load more button hover state */
 .load-more-button:hover:not(:disabled) {
   background-color: #f7fafc;
   border-color: #cbd5e0;
 }
 
+/* Load more button disabled state */
 .load-more-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;

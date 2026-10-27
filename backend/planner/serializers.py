@@ -5,9 +5,10 @@ from destinations.models import Location
 
 class PlannerItemSerializer(serializers.ModelSerializer):
     """
-    플래너 항목 시리얼라이저
+    Serializer for planner items with detailed location information.
+    Used for retrieving complete information about items in a planner.
     """
-    location_details = LocationSerializer(source='location', read_only=True)
+    location_details = LocationSerializer(source='location', read_only=True)  # Include full location details
     
     class Meta:
         model = PlannerItem
@@ -16,10 +17,11 @@ class PlannerItemSerializer(serializers.ModelSerializer):
 
 class PlannerSerializer(serializers.ModelSerializer):
     """
-    플래너 시리얼라이저
+    Serializer for planners with nested items.
+    Used for detailed planner views including all destination items.
     """
-    items = PlannerItemSerializer(many=True, read_only=True)
-    user = serializers.ReadOnlyField(source='user.username')
+    items = PlannerItemSerializer(many=True, read_only=True)  # Include all items in the planner
+    user = serializers.ReadOnlyField(source='user.username')  # Username of the planner owner
     
     class Meta:
         model = Planner
@@ -28,7 +30,8 @@ class PlannerSerializer(serializers.ModelSerializer):
 
 class PlannerItemCreateSerializer(serializers.ModelSerializer):
     """
-    플래너 항목 생성 시리얼라이저
+    Serializer for creating and updating planner items.
+    Includes validation to limit the number of items per planner.
     """
     class Meta:
         model = PlannerItem
@@ -36,19 +39,23 @@ class PlannerItemCreateSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """
-        플래너 항목 유효성 검사
-        - 플래너에 이미 10개 이상의 항목이 있는지 확인
+        Validate planner item data.
+        Ensures a planner doesn't exceed the maximum allowed destinations (10).
         """
         planner = data.get('planner')
         if planner.items.count() >= 10:
-            raise serializers.ValidationError("플래너에는 최대 10개의 여행지만 추가할 수 있습니다.")
+            raise serializers.ValidationError("A planner can have a maximum of 10 destinations.")
         return data
 
 class PlannerListSerializer(serializers.ModelSerializer):
     """
-    플래너 목록 시리얼라이저
+    Serializer for planner list views.
+    
+    Provides summary information including the count of items in each planner.
+    Used for displaying planners in list format with minimal information for overview purposes.
+    Does not include the full detailed items data to improve performance.
     """
-    items_count = serializers.SerializerMethodField()
+    items_count = serializers.SerializerMethodField()  # Calculate number of destinations in the planner
     
     class Meta:
         model = Planner
@@ -56,6 +63,15 @@ class PlannerListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_items_count(self, obj):
+        """
+        Get the number of destinations in the planner.
+        
+        Parameters:
+            obj: Planner instance
+            
+        Returns:
+            int: Count of destinations in the planner
+        """
         return obj.items.count()
 
 

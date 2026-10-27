@@ -1,152 +1,215 @@
-import requests
+from django.shortcuts import render
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+import requests
+from django.conf import settings
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import json
+import os
+from dotenv import load_dotenv
 
-RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
-RAPIDAPI_KEY = "14cebd7147msh3dae59f7abf5ec7p131a26jsnd97a65e180b0"
+# Load API key from environment variables
+load_dotenv()
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY', '8f1784b2e7msh80c7600404170eep16fe6fjsn259a7a07d901')  # In production, this key should be set as an environment variable
+RAPIDAPI_HOST = "sky-scanner3.p.rapidapi.com"
 
-@csrf_exempt
-def search_airports(request):
-    """ 공항 자동완성 API """
-    query = request.GET.get("query", "")
+# API endpoints
+AUTO_COMPLETE_URL = "https://sky-scanner3.p.rapidapi.com/flights/auto-complete"
+SEARCH_ROUNDTRIP_URL = "https://sky-scanner3.p.rapidapi.com/flights/search-roundtrip"
+SEARCH_ONEWAY_URL = "https://sky-scanner3.p.rapidapi.com/flights/search-one-way"
+FLIGHT_DETAIL_URL = "https://sky-scanner3.p.rapidapi.com/flights/detail"
 
+# default headers
+DEFAULT_HEADERS = {
+    "x-rapidapi-key": RAPIDAPI_KEY,
+    "x-rapidapi-host": RAPIDAPI_HOST
+}
+
+@api_view(['GET'])
+def get_airports(request):
+    """Airport autocomplete API"""
+    query = request.GET.get('query', '')
+    
     if not query:
-        return JsonResponse({"error": "쿼리 파라미터가 필요합니다."}, status=400)
-
-    url = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchDestination"
-    headers = {
-        "x-rapidapi-host": RAPIDAPI_HOST,
-        "x-rapidapi-key": RAPIDAPI_KEY
-    }
-    params = {"query": query}
-
-    response = requests.get(url, headers=headers, params=params)
-    if response.status_code != 200:
-        return JsonResponse({"error": "공항 정보를 가져오는 데 실패했습니다."}, status=500)
-
-    return JsonResponse(response.json())
-
-
-# ✅ Django views.py 수정
-@csrf_exempt
-def search_flights(request):
+        return Response({"error": "Query parameter is required"}, status=400)
+    
+    querystring = {"query": query}
+    
     try:
-        if request.method == "GET":
-            origin = request.GET.get("origin")
-            destination = request.GET.get("destination")
-            depart_date = request.GET.get("depart_date")
-
-            if not origin or not destination or not depart_date:
-                return JsonResponse({"error": "Missing parameters"}, status=400)
-
-            print(f"🛫 Searching airport ID for: {origin}, {destination}")
-
-            # ✅ 공항 ID 변환 함수
-            def get_airport_id(query):
-                url = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchDestination"
-                headers = {
-                    "x-rapidapi-host": RAPIDAPI_HOST,
-                    "x-rapidapi-key": RAPIDAPI_KEY
-                }
-                params = {"query": query}
-                response = requests.get(url, headers=headers, params=params)
-                data = response.json()
-
-                if data["status"] and "data" in data:
-                    for item in data["data"]:
-                        if item["type"] == "AIRPORT":
-                            return item["id"]
-                return None
-
-            from_id = get_airport_id(origin)
-            to_id = get_airport_id(destination)
-
-            print(f"🛫 Converted airport IDs: {from_id} -> {to_id}")
-
-            if not from_id or not to_id:
-                return JsonResponse({"error": "Invalid airport code"}, status=400)
-
-            # ✅ 항공편 검색 API 요청
-            url = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
-            headers = {
-                "x-rapidapi-host": RAPIDAPI_HOST,
-                "x-rapidapi-key": RAPIDAPI_KEY
-            }
-            params = {
-                "fromId": from_id,
-                "toId": to_id,
-                "departDate": depart_date,
-                "pageNo": "1",
-                "adults": "1",
-                "children": "0",
-                "sort": "BEST",
-                "cabinClass": "ECONOMY",
-                "currency_code": "KRW"
-            }
-
-            response = requests.get(url, headers=headers, params=params)
-            data = response.json()
-
-            # ✅ 로그 추가
-            print(f"🛫 Flight Search API Response: {data}")
-
-            if "data" in data and "flightOffers" in data["data"]:
-                flights = []
-                for flight in data["data"]["flightOffers"]:
-                    # ✅ airline 정보가 flightOffers에 있을 가능성이 높음
-                    airline_info = flight.get("segments", [{}])[0].get("legs", [{}])[0].get("carriersData", [{}])[0]
-
-                    flights.append({
-                        "airline": airline_info.get("name", "Unknown Airline"),
-                        "logo": airline_info.get("logo", ""),
-                        "iata": airline_info.get("code", ""),
-                        "price": flight.get("priceBreakdown", {}).get("total", {}).get("units", 0),
-                        "currency": flight.get("priceBreakdown", {}).get("total", {}).get("currencyCode", "KRW"),
-                        "departureTime": flight.get("segments", [{}])[0].get("legs", [{}])[0].get("departureTime", "데이터 없음"),
-                        "arrivalTime": flight.get("segments", [{}])[0].get("legs", [{}])[0].get("arrivalTime", "데이터 없음"),
-                        "stops": len(flight.get("segments", [{}])[0].get("legs", [{}])[0].get("flightStops", []))
-                    })
-
-                return JsonResponse({"flights": flights}, safe=False)
-
-            return JsonResponse({"error": "No flights found"}, status=404)
-
-    except Exception as e:
-        print(f"🚨 ERROR: {e}")
-        return JsonResponse({"error": str(e)}, status=500)
-
-
-# ✅ getFlightDetails API 호출 함수 추가
-@csrf_exempt
-def get_flight_details(request):
-    """ 특정 항공편의 상세 정보를 조회하는 API """
-    token = request.GET.get("token")
-
-    if not token:
-        return JsonResponse({"error": "Missing flight token"}, status=400)  # ✅ 명확한 오류 메시지
-
-    url = f"https://{RAPIDAPI_HOST}/api/v1/flights/getFlightDetails"
-    headers = {
-        "x-rapidapi-host": RAPIDAPI_HOST,
-        "x-rapidapi-key": RAPIDAPI_KEY
-    }
-    params = {"token": token}
-
-    try:
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code != 200:
-            return JsonResponse({"error": "Failed to fetch flight details", "status": response.status_code}, status=response.status_code)
-
-        data = response.json()
-
-        if not data or "status" not in data or data["status"] is False:
-            return JsonResponse({"error": "Invalid response from API"}, status=500)
-
-        return JsonResponse(data, safe=False)
-
+        response = requests.get(AUTO_COMPLETE_URL, headers=DEFAULT_HEADERS, params=querystring)
+        response.raise_for_status()  # raise an exception if an error occurs
+        
+        # airport autocomplete search is not logged (to avoid creating too much data)
+        
+        return Response(response.json())
     except requests.exceptions.RequestException as e:
-        return JsonResponse({"error": f"Request failed: {str(e)}"}, status=500)
+        return Response({"error": str(e)}, status=500)
 
-    except Exception as e:
-        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+@api_view(['GET'])
+def search_flights(request):
+    """Flight search API (round/one-way)"""
+    trip_type = request.GET.get('trip_type', 'round')  # 'round' or 'one-way'
+    from_entity_id = request.GET.get('fromEntityId', '')
+    to_entity_id = request.GET.get('toEntityId', '')
+    depart_date = request.GET.get('departDate', '')
+    return_date = request.GET.get('returnDate', '')
+    cabin_class = request.GET.get('cabinClass', 'economy')
+    adults = request.GET.get('adults', '1')
+    children = request.GET.get('children', '0')
+    infants = request.GET.get('infants', '0')
+    
+    if not from_entity_id:
+        return Response({"error": "From location is required"}, status=400)
+    
+    # default query parameters
+    querystring = {
+        "fromEntityId": from_entity_id,
+        "toEntityId": to_entity_id,
+        "cabinClass": cabin_class,
+        "adults": adults,
+        "children": children,
+        "infants": infants
+    }
+    
+    # if the departure date is provided, add it to the query parameters
+    if depart_date:
+        querystring["departDate"] = depart_date
+    
+    # if the round trip is selected and the return date is provided, add it to the query parameters
+    if trip_type == 'round' and return_date:
+        querystring["returnDate"] = return_date
+        url = SEARCH_ROUNDTRIP_URL
+    else:
+        url = SEARCH_ONEWAY_URL
+    
+    try:
+        response = requests.get(url, headers=DEFAULT_HEADERS, params=querystring)
+        response.raise_for_status()
+        
+        response_data = response.json()
+        
+        return Response(response_data)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(['GET'])
+def search_flights_complete(request):
+    """Process subsequent requests for incomplete flight search results"""
+    print("="*40)
+    print("[DEBUG] search_flights_complete endpoint was called")
+    print("[DEBUG] Request method:", request.method)
+    print("[DEBUG] Request GET params:", dict(request.GET))
+    print("="*40)
+    
+    session_id = request.GET.get('sessionId', '')
+    
+    if not session_id:
+        print("[ERROR] No sessionId provided in request")
+        return Response({"error": "session ID is required"}, status=400)
+    
+    print(f"[DEBUG] search_flights_complete called with session_id: {session_id}")
+    
+    # API endpoint
+    api_url = "https://sky-scanner3.p.rapidapi.com/flights/search-incomplete"
+    print(f"[DEBUG] Using API URL: {api_url}")
+    
+    # set API call parameters
+    querystring = {
+        "sessionId": session_id
+    }
+    
+    # optional filter parameters
+    stops = request.GET.get('stops', '')
+    sort = request.GET.get('sort', '')
+    airlines = request.GET.get('airlines', '')
+    
+    # add optional parameters only if they are provided
+    if stops:
+        querystring["stops"] = stops
+    if sort:
+        querystring["sort"] = sort
+    if airlines:
+        querystring["airlines"] = airlines
+        
+    # other optional parameters
+    market = request.GET.get('market', '')
+    locale = request.GET.get('locale', '')
+    currency = request.GET.get('currency', '')
+    cookie = request.GET.get('cookie', '')
+    
+    if market:
+        querystring["market"] = market
+    if locale:
+        querystring["locale"] = locale
+    if currency:
+        querystring["currency"] = currency
+    if cookie:
+        querystring["cookie"] = cookie
+    
+    print(f"[DEBUG] API call parameters: {querystring}")
+    
+    try:
+        print(f"[DEBUG] Making request to SkyScanner API...")
+        
+        # Make the API call
+        response = requests.get(
+            api_url, 
+            headers=DEFAULT_HEADERS, 
+            params=querystring
+        )
+        
+        print(f"[DEBUG] API response received with status code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"[DEBUG] Response content: {response.text}")
+        
+        # Raise exception for bad responses
+        response.raise_for_status()
+        
+        # Parse JSON response
+        response_data = response.json()
+        print(f"[DEBUG] API response successfully parsed to JSON")
+        
+        # Format the response to be consistent with search_flights
+        formatted_response = {
+            "status": True,
+            "message": "Flight search completed successfully",
+            "data": response_data
+        }
+        
+        print("[DEBUG] Returning formatted response to client")
+        return Response(formatted_response)
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        print(f"[ERROR] API request failed: {error_msg}")
+        
+        # Return a special error code so the frontend knows to use the initial search results
+        return Response({
+            "status": False,
+            "message": f"SkyScanner API 호출 오류: {error_msg}",
+            "data": None,
+            "errorCode": "API_UNAVAILABLE"
+        }, status=500)
+
+@api_view(['GET'])
+def get_flight_details(request):
+    """Flight details API"""
+    token = request.GET.get('token', '')
+    itinerary_id = request.GET.get('itineraryId', '')
+    
+    if not token or not itinerary_id:
+        return Response({"error": "Token and itineraryId are required"}, status=400)
+    
+    querystring = {
+        "token": token,
+        "itineraryId": itinerary_id
+    }
+    
+    try:
+        response = requests.get(FLIGHT_DETAIL_URL, headers=DEFAULT_HEADERS, params=querystring)
+        response.raise_for_status()
+        return Response(response.json())
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=500)
+

@@ -20,22 +20,44 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from django.db import models
 import time
-import random  # 무작위성 추가를 위한 random 모듈 추가
+import random  # Adding random module for randomness
 from django.db.models import Count
+import math
 
-# ✅ 모든 여행지 목록 조회
+# This class has created at earlier phase 
+# but now it's not being used and replaced with others. but to avoid corruption, it's being kept.
 class LocationListView(generics.ListAPIView):
+    """
+    API view for listing all travel destinations.
+    Provides paginated access to all destinations in the database.
+    
+    GET: Returns a list of destinations with basic information
+    """
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
-    permission_classes = [AllowAny]  # 🔹 누구나 조회 가능
+    permission_classes = [AllowAny]  # Anyone can view this
 
-# ✅ 특정 여행지 상세 조회
+# This class has created at earlier phase 
+# but now it's not being used and replaced with others. but to avoid corruption, it's being kept.
 class LocationDetailView(generics.RetrieveAPIView):
+    """
+    API view for retrieving detailed information about a specific destination.
+    Provides comprehensive data about a single travel destination.
+    
+    GET: Returns detailed information for a single destination
+    """
     queryset = Location.objects.all()
     serializer_class = LocationDetailSerializer
-    permission_classes = [AllowAny]  # 🔹 누구나 조회 가능
+    permission_classes = [AllowAny]  # Anyone can view this
     
     def get_serializer_context(self):
+        """
+        Add request to serializer context for user-specific information.
+        Allows the serializer to customize the response based on the user.
+        
+        Returns:
+            dict: Context dictionary containing the request
+        """
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
@@ -43,6 +65,16 @@ class LocationDetailView(generics.RetrieveAPIView):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_locations(request):
+    """
+    API endpoint to retrieve all travel destinations.
+    Provides a simple way to access all destinations without pagination.
+    
+    Parameters:
+        request: HTTP request
+        
+    Returns:
+        Response with complete list of destinations
+    """
     locations = Location.objects.all()
     serializer = LocationSerializer(locations, many=True)
     return Response(serializer.data)
@@ -50,6 +82,17 @@ def get_locations(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_location_detail(request, pk):
+    """
+    API endpoint to retrieve detailed information for a specific destination.
+    Provides comprehensive data about a single travel destination by ID.
+    
+    Parameters:
+        request: HTTP request
+        pk: Primary key of the destination to retrieve
+        
+    Returns:
+        Response with detailed information for the specified destination or error message
+    """
     try:
         location = Location.objects.get(pk=pk)
         serializer = LocationDetailSerializer(location, context={'request': request})
@@ -61,16 +104,24 @@ def get_location_detail(request, pk):
 @permission_classes([AllowAny])
 def get_locations_by_tag(request, tag):
     """
-    특정 태그(subcategory0)에 해당하는 여행지 목록을 가져오는 API
+    API to retrieve destinations that match a specific tag (subcategory0).
+    Performs sophisticated tag matching with fuzzy search capabilities.
+    
+    Parameters:
+        request: HTTP request
+        tag: URL-encoded tag string to search for
+        
+    Returns:
+        Response with list of destinations matching the specified tag or error details
     """
     try:
-        # URL 디코딩
+        # URL decoding
         decoded_tag = urllib.parse.unquote(tag)
-        print(f"태그 검색: {decoded_tag}")
+        print(f"Tag search: {decoded_tag}")
         
-        # 정확한 subcategory0 기반으로 여행지 검색
+        # Search for destinations based on exact subcategory0
         with connection.cursor() as cursor:
-            # 유효한 subcategory0 목록 가져오기
+            # Get list of valid subcategory0
             cursor.execute("""
                 SELECT DISTINCT json_extract(subcategories, '$[0]') AS first_subcategory
                 FROM destinations_location
@@ -79,51 +130,51 @@ def get_locations_by_tag(request, tag):
             """)
             valid_tags = [row[0] for row in cursor.fetchall() if row[0]]
             
-            # 디버깅: 모든 유효한 태그 출력
-            print("유효한 태그 목록:")
+            # Debug: print all valid tags
+            print("List of valid tags:")
             for i, vtag in enumerate(valid_tags):
                 print(f"{i+1}. {vtag}")
             
-            # 태그 이름 정규화 (특수 문자 처리)
+            # Normalize tag name (handle special characters)
             normalized_tag = None
             
-            # 정확히 일치하는 태그 찾기
+            # Find exact matching tag
             if decoded_tag in valid_tags:
                 normalized_tag = decoded_tag
             else:
-                # 대소문자 무시하고 비교
+                # Compare ignoring case
                 for valid_tag in valid_tags:
                     if valid_tag.lower() == decoded_tag.lower():
                         normalized_tag = valid_tag
                         break
                 
-                # 특수 문자 처리하여 비교
+                # Compare handling special characters
                 if not normalized_tag:
                     for valid_tag in valid_tags:
-                        # '&'와 'and' 변환 비교
+                        # Convert '&' and 'and' for comparison
                         if valid_tag.replace('&', 'and').lower() == decoded_tag.lower() or \
                            decoded_tag.replace('and', '&').lower() == valid_tag.lower():
                             normalized_tag = valid_tag
                             break
             
             if not normalized_tag:
-                print(f"유효하지 않은 태그: {decoded_tag}")
+                print(f"Invalid tag: {decoded_tag}")
                 
-                # 가장 유사한 태그 찾기 (부분 일치)
+                # Find most similar tag (partial match)
                 similar_tags = []
                 for valid_tag in valid_tags:
                     if decoded_tag.lower() in valid_tag.lower() or valid_tag.lower() in decoded_tag.lower():
                         similar_tags.append(valid_tag)
                 
                 if similar_tags:
-                    print(f"유사한 태그: {similar_tags}")
-                    normalized_tag = similar_tags[0]  # 첫 번째 유사한 태그 사용
+                    print(f"Similar tags: {similar_tags}")
+                    normalized_tag = similar_tags[0]  # Use first similar tag
                 else:
-                    return Response({"error": f"유효하지 않은 태그입니다: {decoded_tag}"}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({"error": f"Invalid tag: {decoded_tag}"}, status=status.HTTP_400_BAD_REQUEST)
             
-            print(f"정규화된 태그: {normalized_tag}")
+            print(f"Normalized tag: {normalized_tag}")
             
-            # 첫 번째 서브카테고리가 태그와 일치하는 여행지 검색
+            # Find locations where first subcategory matches the tag
             cursor.execute("""
                 SELECT id, name
                 FROM destinations_location
@@ -134,15 +185,15 @@ def get_locations_by_tag(request, tag):
             matching_rows = cursor.fetchall()
             matching_ids = [row[0] for row in matching_rows]
             
-            print(f"첫 번째 서브카테고리가 '{normalized_tag}'인 여행지: {len(matching_ids)}개")
-            for row in matching_rows[:5]:  # 처음 5개만 출력
-                print(f"일치하는 여행지 - ID: {row[0]}, 이름: {row[1]}")
+            print(f"Found {len(matching_ids)} destinations with first subcategory '{normalized_tag}'")
+            for row in matching_rows[:5]:  # Print first 5 only
+                print(f"Matching destination - ID: {row[0]}, Name: {row[1]}")
         
         if not matching_ids:
-            print(f"태그 '{normalized_tag}'에 해당하는 여행지가 없습니다.")
+            print(f"No destinations found for tag '{normalized_tag}'")
             return Response({"tag": decoded_tag, "destinations": []}, status=status.HTTP_200_OK)
         
-        # 일치하는 여행지 가져오기
+        # Get matching destinations
         locations = Location.objects.filter(id__in=matching_ids)
         serializer = LocationSerializer(locations, many=True)
         
@@ -152,56 +203,61 @@ def get_locations_by_tag(request, tag):
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"태그 검색 중 오류 발생: {str(e)}")
+        print(f"Error during tag search: {str(e)}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_destinations_nlp(request):
     """
-    감정 분석과 자연어 처리를 활용한 여행지 검색 API
+    Destination search API using sentiment analysis and natural language processing.
+    Performs sophisticated text search with semantic understanding capabilities.
     
-    매개변수:
-    - query: 검색어
-    - limit: 반환할 결과 개수 (기본값: 20, 최대: 200)
-    - retry: 재시도 여부 (True인 경우 캐시를 무시하고 새로 검색)
+    Parameters:
+        request: HTTP request with query parameters:
+            - query: search term
+            - limit: number of results to return (default: 20, max: 200)
+            - retry: retry flag (if True, ignore cache and search again)
+        
+    Returns:
+        Response with search results matching the query or error details
     """
     try:
         query = request.query_params.get('query', '')
         if not query:
-            return Response({"error": "검색어를 입력해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Please enter a search term."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # 결과 개수 제한 매개변수 처리
+        # Process limit parameter
         try:
             limit = int(request.query_params.get('limit', 20))
-            # 최소 5개, 최대 200개로 제한
+            # Limit to minimum 5, maximum 200
             limit = max(5, min(limit, 200))
         except ValueError:
             limit = 20
             
-        # 재시도 여부 확인
+        # Check retry flag
         retry = request.query_params.get('retry', 'false').lower() == 'true'
         
-        print(f"NLP 검색 쿼리: {query}, 결과 제한: {limit}개, 재시도: {retry}")
+        print(f"NLP search query: {query}, result limit: {limit}, retry: {retry}")
         
-        # 모든 여행지 가져오기
+        # Get all destinations
         all_locations = Location.objects.all()
         
-        # NLP 검색 수행 (재시도 시 캐시 무시)
+        # Perform NLP search (ignore cache if retry)
         if retry:
-            # 캐시 키 생성
+            # Create cache key
             cache_key = f"{query}:{limit}"
-            # 캐시에서 해당 키 제거
+            # Remove key from cache
             from .nlp_utils import search_cache
             if search_cache.get(cache_key):
                 search_cache.cache.pop(cache_key, None)
                 search_cache.timestamps.pop(cache_key, None)
-                print(f"캐시 항목 제거: {cache_key}")
+                print(f"Cache item removed: {cache_key}")
         
-        # NLP 검색 수행
+        # Perform NLP search
         search_results = nlp_processor.search_destinations(query, all_locations, top_n=limit)
         
-        # 결과 포맷팅
+        # Format results
         formatted_results = []
         for location, similarity in search_results:
             formatted_results.append({
@@ -214,7 +270,7 @@ def search_destinations_nlp(request):
                 "image": location.image,
                 "city": location.city,
                 "country": location.country,
-                "similarity_score": float(similarity)  # numpy float를 Python float로 변환
+                "similarity_score": float(similarity)  # Convert numpy float to Python float
             })
         
         return Response({
@@ -225,29 +281,50 @@ def search_destinations_nlp(request):
         }, status=status.HTTP_200_OK)
     
     except Exception as e:
-        print(f"NLP 검색 중 오류 발생: {str(e)}")
+        print(f"Error during NLP search: {str(e)}")
         return Response(
-            {"error": f"검색 중 오류가 발생했습니다: {str(e)}"},
+            {"error": f"An error occurred during search: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# 좋아요 API
+# Like API
 class LikeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing destination likes.
+    Handles creating likes, retrieving user's likes, and unliking destinations.
+    """
     serializer_class = LikeSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        """
+        Return only likes belonging to the current user.
+        This ensures users can only access their own like data.
+        
+        Returns:
+            QuerySet: Filtered likes belonging to the current user
+        """
         return Like.objects.filter(user=self.request.user)
     
     def create(self, request, *args, **kwargs):
+        """
+        Custom create method to handle like creation with duplicate checks.
+        Prevents users from liking the same destination multiple times.
+        
+        Parameters:
+            request: HTTP request containing like data
+            
+        Returns:
+            Response with created like data or conflict error
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # 이미 좋아요한 경우 409 Conflict 반환
+        # Return 409 Conflict if already liked
         location = serializer.validated_data['location']
         if Like.objects.filter(user=request.user, location=location).exists():
             return Response(
-                {"detail": "이미 좋아요한 여행지입니다."},
+                {"detail": "You have already liked this destination."},
                 status=status.HTTP_409_CONFLICT
             )
         
@@ -257,10 +334,20 @@ class LikeViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['delete'])
     def unlike(self, request):
+        """
+        Custom action to unlike a destination.
+        Removes a like for a specific location.
+        
+        Parameters:
+            request: HTTP request with location_id parameter
+            
+        Returns:
+            Response with success status or error details
+        """
         location_id = request.query_params.get('location_id')
         if not location_id:
             return Response(
-                {"detail": "location_id 매개변수가 필요합니다."},
+                {"detail": "location_id parameter is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -268,73 +355,161 @@ class LikeViewSet(viewsets.ModelViewSet):
         like.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-# 리뷰 API
+# Review API
 class ReviewViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing destination reviews.
+    Handles creating, retrieving, updating and deleting reviews.
+    """
     serializer_class = ReviewSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        """
+        Return only reviews belonging to the current user.
+        This ensures users can only access their own review data.
+        
+        Returns:
+            QuerySet: Filtered reviews belonging to the current user
+        """
         return Review.objects.filter(user=self.request.user)
     
     def create(self, request, *args, **kwargs):
-        print("리뷰 생성 요청 받음:", request.data)
+        """
+        Custom create method to handle review creation with validation.
+        Validates review data and prevents duplicate reviews.
         
-        # 요청 데이터 검증
+        Parameters:
+            request: HTTP request containing review data
+            
+        Returns:
+            Response with created review data or error details
+        """
+        print("Review creation request received:", request.data)
+        
+        # Validate request data
         location_id = request.data.get('location_id')
         rating = request.data.get('rating')
         content = request.data.get('content')
         
-        print(f"위치 ID: {location_id}, 평점: {rating}, 내용: {content}")
+        print(f"Location ID: {location_id}, Rating: {rating}, Content: {content}")
         
         if not location_id:
-            return Response({"error": "location_id는 필수 항목입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"location_id": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # location_id is an integer or not  
+            location_id = int(location_id)
+        except (ValueError, TypeError):
+            return Response({"location_id": ["Enter a valid integer."]}, status=status.HTTP_400_BAD_REQUEST)
         
         if not rating or not isinstance(rating, (int, float)) or rating < 1 or rating > 5:
-            return Response({"error": "rating은 1에서 5 사이의 숫자여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "rating must be a number between 1 and 5."}, status=status.HTTP_400_BAD_REQUEST)
         
         if not content or not content.strip():
-            return Response({"error": "content는 필수 항목입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "content is required."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # 이미 리뷰를 작성했는지 확인
         try:
-            location = Location.objects.get(id=location_id)
-            existing_review = Review.objects.filter(user=request.user, location=location).first()
+            # Check if location exists
+            location = get_object_or_404(Location, id=location_id)
             
-            if existing_review:
-                print(f"이미 리뷰가 존재합니다. 리뷰 ID: {existing_review.id}")
+            # Check if user already reviewed this location
+            if Review.objects.filter(user=request.user, location=location).exists():
                 return Response(
-                    {"error": "이미 이 여행지에 대한 리뷰를 작성했습니다. 기존 리뷰를 수정해주세요."},
+                    {"error": "You have already reviewed this destination."}, 
                     status=status.HTTP_409_CONFLICT
                 )
-        except Location.DoesNotExist:
-            return Response({"error": "존재하지 않는 여행지입니다."}, status=status.HTTP_404_NOT_FOUND)
-        
-        # 리뷰 생성
-        try:
-            serializer = self.get_serializer(data=request.data, context={'request': request})
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            print("리뷰 생성 성공:", serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            
+            # Analyze review text with improved analysis
+            from .review_utils import analyze_review
+            try:
+                analysis_result = analyze_review(content, rating=float(rating))
+            except Exception as e:
+                print(f"Analysis error occurred: {str(e)}")
+                # Use default values if analysis fails
+                analysis_result = {
+                    'sentiment': 'POSITIVE' if rating >= 4 else ('NEGATIVE' if rating <= 2 else 'NEUTRAL'),
+                    'sentiment_score': 0.5,
+                    'positive_keywords': [],
+                    'negative_keywords': [],
+                    'meaning_units': {
+                        'phrases': [],
+                        'adj_noun_pairs': [],
+                        'negation_concepts': [],
+                        'positive_units': [],
+                        'negative_units': []
+                    }
+                }
+            
+            # Prepare keyword data in a new way
+            # 1. Use only basic data that can be JSON serialized
+            # 2. Do not store dictionary strings, let the model serialize
+            keywords_data = {
+                'positive': analysis_result.get('positive_keywords', []),
+                'negative': analysis_result.get('negative_keywords', []),
+                # Meaning units are simplified
+                'phrases': analysis_result.get('meaning_units', {}).get('phrases', []),
+                'adj_noun_pairs': analysis_result.get('meaning_units', {}).get('adj_noun_pairs', []),
+                'sentiment': analysis_result.get('sentiment', 'NEUTRAL')
+            }
+            
+            # Instead of directly creating the model, use the serializer
+            review_data = {
+                'user': request.user.id,
+                'location_id': location.id,
+                'content': content,
+                'rating': rating,
+                'sentiment': analysis_result.get('sentiment', 'NEUTRAL'),
+                'keywords': keywords_data  # simple structure
+            }
+            
+            serializer = self.get_serializer(data=review_data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # save data through serializer
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
         except Exception as e:
-            print(f"리뷰 생성 중 오류 발생: {str(e)}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print(f"Error creating review: {str(e)}")
+            return Response(
+                {"error": f"An error occurred: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-# 여행지 추천 API
+# Destination recommendation API
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def recommend_destinations(request):
-    """사용자의 좋아요와 리뷰를 기반으로 여행지를 추천합니다."""
+    """
+    Personalized destination recommendation API.
+    Recommends destinations based on user's likes, reviews, selected tags, and recently viewed destinations.
+    Uses sophisticated recommendation algorithm with multiple ranking factors.
+    
+    Parameters:
+        request: HTTP POST request with optional recently_viewed list and query parameters:
+            - limit: Maximum number of recommendations to return (default: 10)
+    
+    Returns:
+        Response with various categories of recommendations:
+            - results: Main recommendation list
+            - keyword_recommendations: Based on review keywords
+            - subcategory_recommendations: Based on preferred subcategories
+            - subtype_recommendations: Based on preferred subtypes
+            - country_recommendations: Based on preferred countries
+            - recently_viewed_recommendations: Based on recently viewed items
+            - tag_group_recommendations: Grouped by user's selected tags
+    """
     user = request.user
     limit = int(request.query_params.get('limit', 10))
     
-    # 무작위성을 위한 시드 설정 (현재 시간 기반)
+    # Set random seed based on current time
     random.seed(time.time())
     
-    print(f"사용자 {user.username}의 맞춤 추천 시작 - 타임스탬프: {time.time()}")
+    print(f"Starting personalized recommendations for user {user.username} - timestamp: {time.time()}")
     
-    # 1. 사용자의 활동 데이터 수집
+    # 1. Collect user activity data
     likes = Like.objects.filter(user=user)
     reviews = Review.objects.filter(user=user)
     
@@ -342,30 +517,30 @@ def recommend_destinations(request):
     reviews_count = reviews.count()
     total_activities = likes_count + reviews_count
     
-    print(f"사용자 활동: 좋아요 {likes_count}개, 리뷰 {reviews_count}개")
+    print(f"User activity: {likes_count} likes, {reviews_count} reviews")
     
-    # 최근 본 여행지 정보 가져오기
+    # Get recently viewed destinations
     recently_viewed = request.data.get('recently_viewed', [])
     has_recently_viewed = len(recently_viewed) > 0
     
     if has_recently_viewed:
-        print(f"최근 본 여행지 수: {len(recently_viewed)}")
+        print(f"Number of recently viewed destinations: {len(recently_viewed)}")
     
-    # 좋아요한 여행지 ID 출력 (디버깅)
+    # Print liked destination IDs (debugging)
     liked_location_ids = [like.location.id for like in likes]
-    print(f"좋아요한 여행지 ID: {liked_location_ids}")
+    print(f"Liked destination IDs: {liked_location_ids}")
     
-    # 2. 활동 데이터 기반 추천 비율 결정 (활동이 많을수록 태그 의존도 감소)
-    # 활동이 10개 이상이면 태그 기반 추천은 거의 사용하지 않음
+    # 2. Determine recommendation ratios based on activity data (less tag dependency with more activity)
+    # If user has 10 or more activities, tag-based recommendation is minimal
     activity_weight = min(total_activities / 10, 1.0)
     tag_weight = 1.0 - activity_weight
     
-    print(f"추천 가중치: 활동 기반 {activity_weight:.2f}, 태그 기반 {tag_weight:.2f}")
+    print(f"Recommendation weights: activity-based {activity_weight:.2f}, tag-based {tag_weight:.2f}")
     
     results = []
     
-    # 3. 태그 기반 추천 (회원가입 시 선택한 태그 기반)
-    # 활동이 없는 신규 사용자는 태그 기반 추천을 우선적으로 제공
+    # 3. Tag-based recommendations (based on tags selected during registration)
+    # New users with no activity get tag-based recommendations as priority
     if total_activities == 0:
         try:
             selected_tags = user.selected_tags or []
@@ -373,25 +548,20 @@ def recommend_destinations(request):
             selected_tags = []
         
         if selected_tags:
-            print(f"신규 사용자의 선택 태그 기반 추천: {selected_tags}")
+            print(f"New user tag-based recommendations: {selected_tags}")
             
-            # 각 태그별로 여행지 검색 및 그룹화
+            # Search and group destinations by tag
             tag_based_results = []
-            tag_groups = {}  # 태그별 여행지 그룹
+            tag_groups = {}  # Group destinations by tag
             
             for tag in selected_tags:
-                # 태그에 해당하는 여행지 검색 (정확한 일치 또는 포함 관계)
-                # 1. 카테고리가 정확히 일치하는 경우
-                exact_matches = Location.objects.filter(category=tag)
-                
-                # 2. 서브카테고리에 포함된 경우 (JSON 필드 검색)
-                # SQLite에서는 JSON 필드 검색이 제한적이므로 Python에서 필터링
+                # Get all destinations
                 all_locations = Location.objects.all()
-                subcategory_matches = []
+                tag_locations = []
                 
                 for loc in all_locations:
                     if loc.subcategories:
-                        # 문자열인 경우 리스트로 변환 시도
+                        # If it's a string, convert to list
                         subcats = loc.subcategories
                         if isinstance(subcats, str):
                             try:
@@ -400,55 +570,35 @@ def recommend_destinations(request):
                             except:
                                 subcats = [subcats]
                         
-                        # 리스트가 아닌 경우 리스트로 변환
+                        # If it's not a list, convert to list
                         if not isinstance(subcats, list):
                             subcats = [subcats]
                         
-                        # 태그가 서브카테고리에 포함되어 있는지 확인
-                        if any(tag.lower() in subcat.lower() for subcat in subcats if subcat):
-                            subcategory_matches.append(loc)
+                        # Check if subcategories[0] exactly matches the tag
+                        if subcats and len(subcats) > 0 and subcats[0] == tag:
+                            tag_locations.append(loc)
                 
-                # 3. 서브타입에 포함된 경우 (JSON 필드 검색)
-                subtype_matches = []
-                for loc in all_locations:
-                    if loc.subtypes:
-                        # 문자열인 경우 리스트로 변환 시도
-                        subtypes = loc.subtypes
-                        if isinstance(subtypes, str):
-                            try:
-                                import json
-                                subtypes = json.loads(subtypes)
-                            except:
-                                subtypes = [subtypes]
-                        
-                        # 리스트가 아닌 경우 리스트로 변환
-                        if not isinstance(subtypes, list):
-                            subtypes = [subtypes]
-                        
-                        # 태그가 서브타입에 포함되어 있는지 확인
-                        if any(tag.lower() in subtype.lower() for subtype in subtypes if subtype):
-                            subtype_matches.append(loc)
-                
-                # 모든 결과 합치기
-                tag_locations = list(exact_matches) + subcategory_matches + subtype_matches
-                
-                # 중복 제거
+                # Remove duplicates
                 tag_locations = list({loc.id: loc for loc in tag_locations}.values())
                 
-                # 이미 좋아요한 여행지 제외
+                # Exclude already liked destinations
                 liked_ids = [like.location.id for like in likes]
                 tag_locations = [loc for loc in tag_locations if loc.id not in liked_ids]
                 
-                # 결과가 있는 경우에만 태그 그룹 추가
+                # Add tag group only if there are results
                 if tag_locations:
-                    # 각 여행지에 유사도 점수 부여 (0.7 고정)
+                    # Assign similarity score to each destination (fixed at 0.7)
                     tag_group_results = [(loc, 0.7) for loc in tag_locations[:5]]
                     tag_groups[tag] = tag_group_results
                     
-                    # 전체 결과 목록에도 추가
+                    # Add to overall results list
                     tag_based_results.extend(tag_group_results)
+                    
+                    print(f"Found {len(tag_locations)} destinations related to tag '{tag}'")
+                else:
+                    print(f"No destinations found matching tag '{tag}'")
             
-            # 중복 제거
+            # Remove duplicates
             seen_ids = set()
             unique_tag_results = []
             
@@ -457,22 +607,22 @@ def recommend_destinations(request):
                     seen_ids.add(loc.id)
                     unique_tag_results.append((loc, score))
             
-            # 태그 기반 추천 결과 추가
+            # Add tag-based recommendation results
             for location, similarity in unique_tag_results[:limit]:
                 results.append((location, similarity))
             
-            # 태그별 그룹 결과 생성
+            # Create tag group results
             tag_group_recommendations = {}
             for tag, group_results in tag_groups.items():
                 tag_group_recommendations[tag] = []
                 for location, similarity in group_results:
                     tag_group_recommendations[tag].append((location, similarity))
             
-            print(f"태그 기반 추천 결과: {len(results)}개, 태그 그룹 수: {len(tag_group_recommendations)}")
+            print(f"Tag-based recommendation results: {len(results)}, Tag groups: {len(tag_group_recommendations)}")
     
-    # 4. 활동 기반 추천 (좋아요와 리뷰 분석)
+    # 4. Activity-based recommendations (from likes and reviews analysis)
     if total_activities > 0:
-        # 3.1 좋아요한 여행지 분석
+        # 3.1 Analyze liked destinations
         liked_locations = [like.location for like in likes]
         liked_categories = Counter()
         liked_subcategories = Counter()
@@ -484,7 +634,7 @@ def recommend_destinations(request):
             if loc.category:
                 liked_categories[loc.category] += 1
             
-            # 서브카테고리 분석
+            # Analyze subcategories
             if loc.subcategories:
                 if isinstance(loc.subcategories, list):
                     for subcat in loc.subcategories:
@@ -492,7 +642,7 @@ def recommend_destinations(request):
                 elif isinstance(loc.subcategories, str):
                     liked_subcategories[loc.subcategories] += 1
             
-            # 서브타입 분석
+            # Analyze subtypes
             if loc.subtypes:
                 if isinstance(loc.subtypes, list):
                     for subtype in loc.subtypes:
@@ -505,128 +655,135 @@ def recommend_destinations(request):
             if loc.city:
                 liked_cities[loc.city] += 1
         
-        # 3.2 리뷰 분석
-        review_keywords = []
+        # 3.2 Analyze reviews with improved keyword handling
+        review_keywords_positive = []
+        review_keywords_negative = []
         positive_reviews = []
         negative_reviews = []
         
-        # 별점 기반 선호/비선호 여행지 ID 목록
-        high_rated_location_ids = []  # 4-5점을 준 여행지 ID
-        low_rated_location_ids = []   # 1-2점을 준 여행지 ID
+        # List of destination IDs with high/low ratings 
+        high_rated_location_ids = []  # IDs of destinations rated 4-5
+        low_rated_location_ids = []   # IDs of destinations rated 1-2
+        
+        # Improved country extraction: Track countries mentioned in reviews
+        review_countries = Counter()
         
         for review in reviews:
-            # 키워드 추출
-            if review.keywords:
-                review_keywords.extend(review.keywords)
+            # Extract keywords with context
+            if hasattr(review, 'keywords'):
+                # Legacy support for old reviews without separate positive/negative keywords
+                if isinstance(review.keywords, list):
+                    if review.rating >= 4:
+                        review_keywords_positive.extend(review.keywords)
+                    elif review.rating <= 2:
+                        review_keywords_negative.extend(review.keywords)
+                # Support for newer structure
+                elif isinstance(review.keywords, dict):
+                    pos_keywords = review.keywords.get('positive_keywords', [])
+                    neg_keywords = review.keywords.get('negative_keywords', [])
+                    if pos_keywords:
+                        review_keywords_positive.extend(pos_keywords)
+                    if neg_keywords:
+                        review_keywords_negative.extend(neg_keywords)
+                    
+                    # Improved country extraction: Find country names in keywords
+                    all_keywords = pos_keywords + neg_keywords
+                    countries = extract_countries_from_keywords(all_keywords)
+                    for country in countries:
+                        review_countries[country] += 1
             
-            # 별점 기반 분류
+            # Improved country extraction: Extract country names directly from review content
+            if hasattr(review, 'content') and review.content:
+                content_countries = extract_countries_from_text(review.content)
+                for country in content_countries:
+                    review_countries[country] += 2  # Higher weight for explicitly mentioned countries
+            
+            # Improved country extraction: Add the country of the reviewed location
+            if review.location.country:
+                review_countries[review.location.country] += 3  # Highest weight for the country of the reviewed location
+            
+            # Classify by rating
             if review.rating >= 4:
                 high_rated_location_ids.append(review.location.id)
-                # 높은 별점의 리뷰는 긍정적인 리뷰로 간주 (감정 분석 결과와 무관하게)
                 positive_reviews.append(review)
             elif review.rating <= 2:
                 low_rated_location_ids.append(review.location.id)
                 negative_reviews.append(review)
-            # 별점이 3점인 경우 감정 분석 결과에 따라 분류
-            elif review.sentiment == 'POSITIVE':
+            # For rating 3, classify based on sentiment analysis
+            elif hasattr(review, 'sentiment') and review.sentiment == 'POSITIVE':
                 positive_reviews.append(review)
         
-        print(f"높은 별점(4-5점)을 준 여행지 ID: {high_rated_location_ids}")
-        print(f"낮은 별점(1-2점)을 준 여행지 ID: {low_rated_location_ids}")
+        print(f"High-rated (4-5 stars) destination IDs: {high_rated_location_ids}")
+        print(f"Low-rated (1-2 stars) destination IDs: {low_rated_location_ids}")
+        print(f"Positive keywords from reviews: {review_keywords_positive}")
+        print(f"Negative keywords from reviews: {review_keywords_negative}")
         
-        # 3.3 키워드 빈도 계산
-        keyword_counts = Counter(review_keywords)
-        top_keywords = [word for word, count in keyword_counts.most_common(10)]
+        # 3.3 Calculate keyword frequency
+        pos_keyword_counts = Counter(review_keywords_positive)
+        neg_keyword_counts = Counter(review_keywords_negative)
+        top_pos_keywords = [word for word, count in pos_keyword_counts.most_common(10)]
+        top_neg_keywords = [word for word, count in neg_keyword_counts.most_common(10)]
         
-        print(f"상위 키워드: {top_keywords}")
-        print(f"선호 카테고리: {liked_categories.most_common(3)}")
-        print(f"선호 서브카테고리: {liked_subcategories.most_common(5)}")
-        print(f"선호 서브타입: {liked_subtypes.most_common(5)}")
-        print(f"선호 지역: {liked_countries.most_common(3)}")
+        print(f"Top positive keywords: {top_pos_keywords}")
+        print(f"Top negative keywords: {top_neg_keywords}")
         
-        # 3.4 활동 기반 추천 여행지 검색
-        # 좋아요한 여행지의 특성과 리뷰 키워드를 기반으로 유사한 여행지 검색
+        # 3.4 Find activity-based recommendation destinations
+        # Search for similar destinations based on liked destination characteristics and positive review keywords
+        # while avoiding destinations similar to negative review keywords
         activity_based_results = []
         
-        # 3.4.1 키워드 기반 검색
-        if top_keywords:
-            print(f"Top keywords: {top_keywords}")
+        # 3.4.1 Keyword-based search with avoid keywords
+        if top_pos_keywords or top_neg_keywords:
+            print(f"Top positive keywords: {top_pos_keywords}")
+            print(f"Top negative keywords to avoid: {top_neg_keywords}")
+            
+            # add log message for adverb filtering
+            common_adverbs = {
+                'actually', 'quite', 'rather', 'really', 'very', 'extremely', 
+                'supposedly', 'basically', 'literally', 'definitely', 'certainly',
+                'absolutely', 'completely', 'totally', 'utterly', 'obviously',
+                'clearly', 'simply', 'just', 'generally', 'arguably'
+            }
+            
+            filtered_neg_keywords = [word for word in top_neg_keywords if word not in common_adverbs]
+            
+            if len(filtered_neg_keywords) != len(top_neg_keywords):
+                removed_adverbs = [word for word in top_neg_keywords if word in common_adverbs]
+                print(f"Filtered out adverbs from negative keywords: {removed_adverbs}")
+                print(f"Refined negative keywords: {filtered_neg_keywords}")
+            
+            # Use enhanced find_similar_destinations that handles avoid_keywords
             keyword_results = find_similar_destinations(
-                top_keywords, 
+                top_pos_keywords, 
                 user.id, 
                 limit=10,
-                exclude_location_ids=low_rated_location_ids
+                exclude_location_ids=low_rated_location_ids,
+                avoid_keywords=filtered_neg_keywords  # Use filtered negative keywords
             )
             
-            # 높은 별점을 받은 여행지와 유사한 여행지의 유사도 점수 증가
-            keyword_recommendations = []  # 키워드 기반 추천 결과를 별도로 저장
-            for i, (location, similarity) in enumerate(keyword_results):
-                for high_rated_loc_id in high_rated_location_ids:
-                    try:
-                        high_rated_loc = Location.objects.get(id=high_rated_loc_id)
-                        
-                        # 공통 요소가 있는지 확인하는 함수
-                        def has_common_elements(list1, list2):
-                            if not list1 or not list2:
-                                return False
-                            
-                            # 문자열이면 리스트로 변환
-                            if isinstance(list1, str):
-                                try:
-                                    import json
-                                    list1 = json.loads(list1)
-                                except:
-                                    list1 = [list1]
-                            
-                            if isinstance(list2, str):
-                                try:
-                                    import json
-                                    list2 = json.loads(list2)
-                                except:
-                                    list2 = [list2]
-                            
-                            # 리스트가 아니면 리스트로 변환
-                            if not isinstance(list1, list):
-                                list1 = [list1]
-                            
-                            if not isinstance(list2, list):
-                                list2 = [list2]
-                            
-                            # 공통 요소 확인
-                            return any(item in list2 for item in list1)
-                        
-                        # 서브카테고리 또는 서브타입 중 공통 요소가 있으면 유사도 증가
-                        if (has_common_elements(location.subcategories, high_rated_loc.subcategories) or
-                            has_common_elements(location.subtypes, high_rated_loc.subtypes)):
-                            # 유사도 점수 증가 (최대 0.95까지)
-                            new_similarity = min(similarity + 0.2, 0.95)
-                            keyword_results[i] = (location, new_similarity)
-                            print(f"Increased similarity for {location.name} from {similarity} to {new_similarity}")
-                            break
-                    except Location.DoesNotExist:
-                        continue
+            # Store keyword-based recommendations separately
+            keyword_recommendations = []
             
-            # 키워드 기반 추천 결과를 활동 기반 결과 목록에 추가
+            # Add keyword-based recommendation results to activity-based results
             for location, similarity in keyword_results:
-                # 대신 activity_based_results에 추가
                 activity_based_results.append((location, similarity))
-                keyword_recommendations.append((location, similarity))  # 키워드 기반 추천 결과 별도 저장
-                print(f"키워드 기반 추천: {location.name}, 유사도: {similarity:.2f}")
+                keyword_recommendations.append((location, similarity))
+                print(f"Keyword-based recommendation: {location.name}, similarity: {similarity:.2f}")
         
-        # 3.4.2 서브카테고리 기반 검색
+        # 3.4.2 Subcategory-based search
         if liked_subcategories:
             top_subcategories = [subcat for subcat, _ in liked_subcategories.most_common(5)]
-            print(f"상위 서브카테고리: {top_subcategories}")
+            print(f"Top subcategories: {top_subcategories}")
             
-            # JSON 필드 검색을 위한 쿼리 구성
+            # Build query for JSON field search
             subcategory_locations = []
             
-            # 데이터베이스 호환성 문제로 인해 모든 여행지를 가져와서 Python에서 필터링
+            # Get all destinations and filter in Python due to database compatibility issues
             all_locations = Location.objects.all()
             
             for loc in all_locations:
                 if loc.subcategories:
-                    # 문자열인 경우 리스트로 변환
+                    # Convert string to list if necessary
                     loc_subcats = loc.subcategories
                     if isinstance(loc_subcats, str):
                         try:
@@ -635,54 +792,54 @@ def recommend_destinations(request):
                         except:
                             loc_subcats = [loc_subcats]
                     
-                    # 리스트가 아닌 경우 리스트로 변환
+                    # Convert to list if not a list
                     if not isinstance(loc_subcats, list):
                         loc_subcats = [loc_subcats]
                     
-                    # 서브카테고리 일치 여부 확인
+                    # Check for subcategory match
                     for subcat in top_subcategories:
                         if subcat in loc_subcats:
                             subcategory_locations.append(loc)
                             break
             
-            # 중복 제거
+            # Remove duplicates
             subcategory_locations = list({loc.id: loc for loc in subcategory_locations}.values())
             
-            # 이미 좋아요한 여행지 제외
+            # Exclude already liked destinations
             liked_ids = [loc.id for loc in liked_locations]
             subcategory_locations = [loc for loc in subcategory_locations if loc.id not in liked_ids]
             
-            print(f"서브카테고리 기반 추천 여행지 수: {len(subcategory_locations)}")
+            print(f"Number of subcategory-based recommendation destinations: {len(subcategory_locations)}")
             
-            # 무작위로 섞어서 다양한 추천 결과 제공
+            # Shuffle randomly to provide varied recommendations
             random.shuffle(subcategory_locations)
             
-            # 상위 결과만 선택 (유사도 점수 다양화)
+            # Select top results (varied similarity scores)
             subcategory_results = []
             for i, loc in enumerate(subcategory_locations[:limit]):
-                # 유사도 점수 - 무작위성 제거
+                # Similarity score - without randomness
                 base_similarity = 0.75 + (i % 4) * 0.05
                 similarity = base_similarity
                 
                 subcategory_results.append((loc, similarity))
-                print(f"서브카테고리 기반 추천: {loc.name}, 유사도: {similarity:.2f}")
+                print(f"Subcategory-based recommendation: {loc.name}, similarity: {similarity:.2f}")
             
             activity_based_results.extend(subcategory_results)
         
-        # 3.4.3 서브타입 기반 검색
+        # 3.4.3 Subtype-based search
         if liked_subtypes:
             top_subtypes = [subtype for subtype, _ in liked_subtypes.most_common(5)]
-            print(f"상위 서브타입: {top_subtypes}")
+            print(f"Top subtypes: {top_subtypes}")
             
-            # JSON 필드 검색을 위한 쿼리 구성
+            # Build query for JSON field search
             subtype_locations = []
             
-            # 데이터베이스 호환성 문제로 인해 모든 여행지를 가져와서 Python에서 필터링
+            # Get all destinations and filter in Python due to database compatibility issues
             all_locations = Location.objects.all()
             
             for loc in all_locations:
                 if loc.subtypes:
-                    # 문자열인 경우 리스트로 변환
+                    # Convert string to list if necessary
                     loc_subtypes = loc.subtypes
                     if isinstance(loc_subtypes, str):
                         try:
@@ -691,53 +848,74 @@ def recommend_destinations(request):
                         except:
                             loc_subtypes = [loc_subtypes]
                     
-                    # 리스트가 아닌 경우 리스트로 변환
+                    # Convert to list if not a list
                     if not isinstance(loc_subtypes, list):
                         loc_subtypes = [loc_subtypes]
                     
-                    # 서브타입 일치 여부 확인
+                    # Check for subtype match
                     for subtype in top_subtypes:
-                        # 정확한 일치 또는 부분 일치(포함) 확인
+                        # Check for exact match or partial match (inclusion)
                         if subtype in loc_subtypes or any(subtype.lower() in st.lower() for st in loc_subtypes):
                             subtype_locations.append(loc)
                             break
             
-            # 중복 제거
+            # Remove duplicates
             subtype_locations = list({loc.id: loc for loc in subtype_locations}.values())
             
-            # 이미 좋아요한 여행지와 서브카테고리 결과에 포함된 여행지 제외
+            # Exclude already liked destinations and destinations included in subcategory results
             liked_ids = [loc.id for loc in liked_locations]
             subcategory_ids = [loc[0].id for loc in subcategory_results]
             subtype_locations = [loc for loc in subtype_locations if loc.id not in liked_ids and loc.id not in subcategory_ids]
             
-            print(f"서브타입 기반 추천 여행지 수: {len(subtype_locations)}")
+            print(f"Number of subtype-based recommendation destinations: {len(subtype_locations)}")
             
-            # 무작위로 섞어서 다양한 추천 결과 제공
+            # Shuffle randomly to provide varied recommendations
             random.shuffle(subtype_locations)
             
-            # 상위 결과만 선택 (유사도 점수 다양화)
+            # Select top results (varied similarity scores)
             subtype_results = []
             for i, loc in enumerate(subtype_locations[:limit]):
-                # 유사도 점수 - 무작위성 제거
+                # Similarity score - without randomness
                 base_similarity = 0.7 + (i % 4) * 0.05
                 similarity = base_similarity
                 
                 subtype_results.append((loc, similarity))
-                print(f"서브타입 기반 추천: {loc.name}, 유사도: {similarity:.2f}")
+                print(f"Subtype-based recommendation: {loc.name}, similarity: {similarity:.2f}")
             
             activity_based_results.extend(subtype_results)
         
-        # 3.4.4 국가 기반 검색
+        # 3.4.4 Country-based search
+        # Improve country selection logic: use both liked and review information
+        combined_countries = Counter()
+        
+        # countries from liked locations
         if liked_countries:
-            top_countries = [country for country, _ in liked_countries.most_common(3)]
-            print(f"상위 국가: {top_countries}")
+            for country, count in liked_countries.items():
+                combined_countries[country] += count
+                
+        # countries from reviews
+        if review_countries:
+            for country, count in review_countries.items():
+                combined_countries[country] += count
+                
+        # ensure at least one country
+        if not combined_countries and recently_viewed:
+            # countries from recently viewed locations
+            for item in recently_viewed:
+                if item.get('country'):
+                    combined_countries[item.get('country')] += 1
+        
+        if combined_countries:
+            # select top 5 countries (increased from 3 to 5)
+            top_countries = [country for country, _ in combined_countries.most_common(5)]
+            print(f"Top countries: {top_countries}")
             
             country_locations = Location.objects.filter(country__in=top_countries)
             
-            # 이미 좋아요한 여행지와 서브카테고리/서브타입 결과에 포함된 여행지 제외
+            # Exclude already liked destinations and destinations included in subcategory/subtype results
             liked_ids = [loc.id for loc in liked_locations]
             
-            # 이전 결과에서 제외할 ID 목록 생성 (변수가 정의되지 않은 경우 빈 리스트 사용)
+            # Create list of IDs to exclude from previous results (use empty list if variable not defined)
             previous_results_ids = []
             if 'subcategory_results' in locals() and subcategory_results:
                 previous_results_ids.extend([loc[0].id for loc in subcategory_results])
@@ -746,68 +924,97 @@ def recommend_destinations(request):
                 
             country_locations = country_locations.exclude(id__in=liked_ids + previous_results_ids)
             
-            # 리스트로 변환하여 무작위로 섞기
-            country_locations_list = list(country_locations)
-            random.shuffle(country_locations_list)
+            # improve weight system: separate country results
+            country_results_by_country = {}
             
-            print(f"국가 기반 추천 여행지 수: {len(country_locations_list)}")
-            
-            # 상위 결과만 선택 (유사도 점수 다양화)
-            country_results = []
-            for i, loc in enumerate(country_locations_list[:limit]):
-                # 유사도 점수 - 무작위성 제거
-                base_similarity = 0.65 + (i % 4) * 0.05
-                similarity = base_similarity
+            for country in top_countries:
+                # filter locations for specific country
+                country_specific_locations = country_locations.filter(country=country)
+                country_specific_list = list(country_specific_locations)
                 
-                country_results.append((loc, similarity))
-                print(f"국가 기반 추천: {loc.name}, 유사도: {similarity:.2f}")
+                # process only if there are results
+                if country_specific_list:
+                    # shuffle to ensure diversity
+                    random.shuffle(country_specific_list)
+                    
+                    # save country results (max 5 locations)
+                    country_results_by_country[country] = []
+                    
+                    for i, loc in enumerate(country_specific_list[:5]):
+                        # calculate weight: adjust base score based on mention frequency in reviews/likes
+                        base_weight = 0.65
+                        mention_bonus = min(0.3, combined_countries[country] * 0.05)  # bonus based on mention frequency
+                        final_similarity = base_weight + mention_bonus + (i % 3) * 0.03  # add slight variation
+                        
+                        country_results_by_country[country].append((loc, final_similarity))
+            
+            # merge country results (add top items from each country alternately)
+            country_results = []
+            max_per_country = max(len(results) for country, results in country_results_by_country.items()) if country_results_by_country else 0
+            
+            for i in range(max_per_country):
+                for country in top_countries:
+                    if country in country_results_by_country and i < len(country_results_by_country[country]):
+                        country_results.append(country_results_by_country[country][i])
+            
+            # limit results
+            country_results = country_results[:limit]
+            
+            for location, similarity in country_results:
+                print(f"Country-based recommendation: {location.name}, similarity: {similarity:.2f}")
             
             activity_based_results.extend(country_results)
-        
-        # 중복 제거 및 정렬
-        seen_ids = set()
-        unique_activity_results = []
-        
-        for loc, score in activity_based_results:
-            if loc.id not in seen_ids:
-                seen_ids.add(loc.id)
-                unique_activity_results.append((loc, score))
-        
-        # 점수 기준 정렬
-        unique_activity_results.sort(key=lambda x: x[1], reverse=True)
-        
-        # 활동 기반 추천 결과 저장
-        for location, similarity in unique_activity_results[:limit]:
-            results.append((location, similarity))
     
-    # 5. 태그 기반 추천 (기존 태그 선택 기반) - 활동이 있는 사용자를 위한 보조 추천
+    # 5. Tag-based recommendations (from existing tag selection) - supplementary for users with activity
     if tag_weight > 0.1 and len(results) < limit and total_activities > 0:
-        # 사용자 프로필에서 선택한 태그 가져오기
+        # Get tags selected in user profile
         try:
             selected_tags = user.selected_tags or []
         except:
             selected_tags = []
         
         if selected_tags:
-            print(f"사용자 선택 태그: {selected_tags}")
+            print(f"User selected tags: {selected_tags}")
             
-            # 각 태그별로 여행지 검색
+            # Search for destinations by tag
             tag_based_results = []
             
             for tag in selected_tags:
-                # 태그에 해당하는 여행지 검색
-                tag_locations = Location.objects.filter(category=tag)
+                # bring all destinations
+                all_locations = Location.objects.all()
+                tag_locations = []
                 
-                # 이미 좋아요한 여행지 제외
+                for loc in all_locations:
+                    if loc.subcategories:
+                        # If it's a string, convert to list
+                        subcats = loc.subcategories
+                        if isinstance(subcats, str):
+                            try:
+                                import json
+                                subcats = json.loads(subcats)
+                            except:
+                                subcats = [subcats]
+                        
+                        # If it's not a list, convert to list
+                        if not isinstance(subcats, list):
+                            subcats = [subcats]
+                        
+                        # Check if subcategories[0] exactly matches the tag
+                        if subcats and len(subcats) > 0 and subcats[0] == tag:
+                            tag_locations.append(loc)
+                
+                # Exclude already liked destinations
                 liked_ids = [like.location.id for like in likes]
-                tag_locations = tag_locations.exclude(id__in=liked_ids)
+                tag_locations = [loc for loc in tag_locations if loc.id not in liked_ids]
                 
-                # 결과 추가 (상위 5개만)
+                # Add results (top 5 only)
                 for loc in tag_locations[:5]:
-                    tag_based_results.append((loc, 0.6))  # 태그 기반은 낮은 유사도 점수 부여
+                    tag_based_results.append((loc, 0.6))  # Lower similarity score for tag-based
+                
+                print(f"Found {len(tag_locations)} destinations related to tag '{tag}'")
             
-            # 중복 제거
-            seen_ids = set(item["id"] for item in results)
+            # Remove duplicates
+            seen_ids = set(item.get("id") if isinstance(item, dict) else item[0].id for item in results)
             unique_tag_results = []
             
             for loc, score in tag_based_results:
@@ -815,56 +1022,56 @@ def recommend_destinations(request):
                     seen_ids.add(loc.id)
                     unique_tag_results.append((loc, score))
             
-            # 태그 기반 추천 결과 추가
+            # Add tag-based recommendation results
             remaining_slots = limit - len(results)
             for location, similarity in unique_tag_results[:remaining_slots]:
                 results.append((location, similarity))
     
-    # 6. 결과가 부족한 경우 인기 여행지로 채우기
+    # 6. Fill with popular destinations if not enough results
     if len(results) < limit:
-        print("추천 결과가 부족하여 인기 여행지로 보충합니다")
+        print("Supplementing recommendations with popular destinations due to insufficient results")
         
-        # 인기 여행지 (좋아요가 많은 순)
+        # Popular destinations (ordered by most likes)
         popular_locations = Location.objects.annotate(
             total_likes=models.Count('likes')
         ).order_by('-total_likes')
         
-        # 이미 추천된 여행지 제외
+        # Exclude already recommended destinations
         seen_ids = set(item["id"] for item in results)
         popular_locations = popular_locations.exclude(id__in=seen_ids)
         
-        # 이미 좋아요한 여행지 제외
+        # Exclude already liked destinations
         liked_ids = [like.location.id for like in likes]
         popular_locations = popular_locations.exclude(id__in=liked_ids)
         
-        # 인기 여행지 추가
+        # Add popular destinations
         remaining_slots = limit - len(results)
         for location in popular_locations[:remaining_slots]:
-            results.append((location, 0.5))  # 인기 여행지는 중간 유사도 점수 부여
+            results.append((location, 0.5))  # Medium similarity score for popular destinations
     
-    # 7. 서브타입 기반 추천 결과 별도 저장
+    # 7. Store subtype-based recommendation results separately
     subtype_recommendations = []
     if 'subtype_results' in locals() and subtype_results:
         for location, similarity in subtype_results[:limit]:
             subtype_recommendations.append((location, similarity))
     
-    # 8. 국가 기반 추천 결과 별도 저장
+    # 8. Store country-based recommendation results separately
     country_recommendations = []
     if 'country_results' in locals() and country_results:
         for location, similarity in country_results[:limit]:
             country_recommendations.append((location, similarity))
     
-    # 9. 서브카테고리 기반 추천 결과 별도 저장
+    # 9. Store subcategory-based recommendation results separately
     subcategory_recommendations = []
     if 'subcategory_results' in locals() and subcategory_results:
         for location, similarity in subcategory_results[:limit]:
             subcategory_recommendations.append((location, similarity))
             
-    # 10. 최근 본 여행지 기반 추천 결과
+    # 10. Recently viewed-based recommendation results
     recently_viewed_recommendations = []
     
     if has_recently_viewed:
-        # 최근 본 여행지의 국가, 서브카테고리, 서브타입 수집
+        # Collect countries, subcategories, subtypes from recently viewed destinations
         rv_countries = []
         rv_subcategories = []
         rv_subtypes = []
@@ -887,33 +1094,33 @@ def recommend_destinations(request):
                 else:
                     rv_subtypes.append(subtypes)
         
-        # 중복 제거
+        # Remove duplicates
         rv_countries = list(set(rv_countries))
         rv_subcategories = list(set(rv_subcategories))
         rv_subtypes = list(set(rv_subtypes))
         
-        print(f"최근 본 여행지 국가: {rv_countries}")
-        print(f"최근 본 여행지 서브카테고리: {rv_subcategories}")
-        print(f"최근 본 여행지 서브타입: {rv_subtypes}")
+        print(f"Recently viewed countries: {rv_countries}")
+        print(f"Recently viewed subcategories: {rv_subcategories}")
+        print(f"Recently viewed subtypes: {rv_subtypes}")
         
-        # 최근 본 여행지와 유사한 여행지 찾기
+        # Find destinations similar to recently viewed
         recently_viewed_locations = []
         
-        # 데이터베이스 호환성 문제로 인해 모든 여행지를 가져와서 Python에서 필터링
+        # Get all destinations and filter in Python due to database compatibility issues
         all_locations = Location.objects.all()
         
         for loc in all_locations:
-            # 이미 좋아요한 여행지나 최근 본 여행지는 제외
+            # Exclude already liked destinations and recently viewed destinations
             if loc.id in liked_location_ids or any(rv['id'] == loc.id for rv in recently_viewed):
                 continue
                 
-            match_score = 0  # 유사도 점수
+            match_score = 0  # Similarity score
             
-            # 1. 국가 일치 여부 확인
+            # 1. Check country match
             if loc.country and loc.country in rv_countries:
                 match_score += 0.3
             
-            # 2. 서브카테고리 일치 여부 확인
+            # 2. Check subcategory match
             if loc.subcategories:
                 loc_subcats = loc.subcategories
                 if isinstance(loc_subcats, str):
@@ -931,7 +1138,7 @@ def recommend_destinations(request):
                         match_score += 0.2
                         break
             
-            # 3. 서브타입 일치 여부 확인
+            # 3. Check subtype match
             if loc.subtypes:
                 loc_subtypes = loc.subtypes
                 if isinstance(loc_subtypes, str):
@@ -949,45 +1156,45 @@ def recommend_destinations(request):
                         match_score += 0.2
                         break
             
-            # 유사도 점수가 0.2 이상인 경우만 추가 (최소 하나 이상 일치)
+            # Add only locations with similarity score >= 0.2 (at least one match)
             if match_score >= 0.2:
-                # 유사도 점수 최대 0.7로 제한 (너무 높지 않게 설정)
+                # Limit similarity score to 0.7 (keep it moderate)
                 match_score = min(match_score, 0.7)
                 recently_viewed_locations.append((loc, match_score))
         
-        # 유사도 점수 기준으로 정렬
+        # Sort by similarity score
         recently_viewed_locations.sort(key=lambda x: x[1], reverse=True)
         
-        # 상위 결과 선택
+        # Select top results
         recently_viewed_recommendations = recently_viewed_locations[:limit]
         
-        print(f"최근 본 여행지 기반 추천 수: {len(recently_viewed_recommendations)}")
+        print(f"Number of recently viewed-based recommendations: {len(recently_viewed_recommendations)}")
     
-    print(f"최종 추천 결과: {len(results)}개")
+    print(f"Final recommendation results: {len(results)} destinations")
     
-    # Location 객체를 JSON 직렬화 가능한 딕셔너리로 변환하는 함수
+    # Function to convert Location object to serializable dictionary
     def location_to_dict(location, similarity, recommendation_type="general"):
         return {
-            "id": location.id,
-            "name": location.name,
-            "description": location.description,
-            "subcategories": location.subcategories,
-            "subtypes": location.subtypes,
-            "image": location.image,
-            "city": location.city,
-            "country": location.country,
-            "similarity_score": float(similarity),
+                "id": location.id,
+                "name": location.name,
+                "description": location.description,
+                "subcategories": location.subcategories,
+                "subtypes": location.subtypes,
+                "image": location.image,
+                "city": location.city,
+                "country": location.country,
+                "similarity_score": float(similarity),
             "recommendation_type": recommendation_type
         }
     
-    # 결과를 JSON 직렬화 가능한 형태로 변환
+    # Convert results to JSON-serializable format
     serialized_results = []
     for location, similarity in results:
-        # 추천 유형 결정 (간단한 추정)
+        # Determine recommendation type (simple estimation)
         recommendation_type = "general"
         serialized_results.append(location_to_dict(location, similarity, recommendation_type))
     
-    # 태그 그룹 추천 결과 직렬화
+    # Serialize tag group recommendation results
     serialized_tag_groups = {}
     if 'tag_group_recommendations' in locals() and tag_group_recommendations:
         for tag, recommendations in tag_group_recommendations.items():
@@ -995,28 +1202,28 @@ def recommend_destinations(request):
             for location, similarity in recommendations:
                 serialized_tag_groups[tag].append(location_to_dict(location, similarity, "tag"))
     
-    # 서브카테고리 추천 직렬화
+    # Serialize subcategory recommendations
     serialized_subcategory_recommendations = []
     for location, similarity in subcategory_recommendations:
         serialized_subcategory_recommendations.append(location_to_dict(location, similarity, "subcategory"))
     
-    # 서브타입 추천 직렬화
+    # Serialize subtype recommendations
     serialized_subtype_recommendations = []
     for location, similarity in subtype_recommendations:
         serialized_subtype_recommendations.append(location_to_dict(location, similarity, "subtype"))
     
-    # 국가 추천 직렬화
+    # Serialize country recommendations
     serialized_country_recommendations = []
     for location, similarity in country_recommendations:
         serialized_country_recommendations.append(location_to_dict(location, similarity, "country"))
     
-    # 키워드 기반 추천 직렬화
+    # Serialize keyword-based recommendations
     serialized_keyword_recommendations = []
     if 'keyword_recommendations' in locals() and keyword_recommendations:
         for location, similarity in keyword_recommendations:
             serialized_keyword_recommendations.append(location_to_dict(location, similarity, "keyword"))
     
-    # 최근 본 여행지 기반 추천 직렬화
+    # Serialize recently viewed-based recommendations
     serialized_recently_viewed_recommendations = []
     for location, similarity in recently_viewed_recommendations:
         serialized_recently_viewed_recommendations.append(location_to_dict(location, similarity, "recently_viewed"))
@@ -1033,14 +1240,23 @@ def recommend_destinations(request):
         "tag_group_recommendations": serialized_tag_groups
     }, status=status.HTTP_200_OK)
 
-# 사용자의 좋아요 목록 조회
+# Retrieve user's likes list
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_likes(request):
-    """사용자가 좋아요한 여행지 목록을 반환합니다."""
+    """
+    API endpoint to retrieve all destinations liked by the authenticated user.
+    Returns a comprehensive list of liked destinations with complete location details.
+    
+    Parameters:
+        request: HTTP GET request from authenticated user
+    
+    Returns:
+        Response with count and list of liked destinations
+    """
     likes = Like.objects.filter(user=request.user).select_related('location')
     
-    # 결과 포맷팅
+    # Format results
     results = []
     for like in likes:
         results.append({
@@ -1054,14 +1270,23 @@ def user_likes(request):
         "results": results
     })
 
-# 사용자의 리뷰 목록 조회
+# Retrieve user's reviews list
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_reviews(request):
-    """사용자가 작성한 리뷰 목록을 반환합니다."""
+    """
+    API endpoint to retrieve all reviews written by the authenticated user.
+    Returns a comprehensive list of user reviews with complete location details.
+    
+    Parameters:
+        request: HTTP GET request from authenticated user
+    
+    Returns:
+        Response with count and list of user reviews
+    """
     reviews = Review.objects.filter(user=request.user).select_related('location')
     
-    # 결과 포맷팅
+    # Format results
     results = []
     for review in reviews:
         results.append({
@@ -1080,11 +1305,21 @@ def user_reviews(request):
         "results": results
     })
 
-# 여행지의 리뷰 목록 조회
+# Retrieve location's reviews list
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def location_reviews(request, location_id):
-    """특정 여행지의 리뷰 목록을 반환합니다."""
+    """
+    API endpoint to retrieve all reviews for a specific destination.
+    Returns a list of reviews for public viewing, no authentication required.
+    
+    Parameters:
+        request: HTTP GET request
+        location_id: ID of the destination to get reviews for
+    
+    Returns:
+        Response with count and list of reviews for the destination
+    """
     reviews = Review.objects.filter(location_id=location_id)
     serializer = ReviewSerializer(reviews, many=True)
     
@@ -1094,9 +1329,22 @@ def location_reviews(request, location_id):
     })
 
 class UserReviewsView(APIView):
+    """
+    API view for paginated access to user reviews.
+    Provides a paginated list of the authenticated user's reviews.
+    """
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
+        """
+        GET method to retrieve paginated list of user reviews.
+        
+        Parameters:
+            request: HTTP GET request from authenticated user
+        
+        Returns:
+            Paginated response with user reviews
+        """
         reviews = Review.objects.filter(user=request.user).order_by('-created_at')
         
         paginator = PageNumberPagination()
@@ -1107,16 +1355,29 @@ class UserReviewsView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 class UserLikesView(APIView):
+    """
+    API view for paginated access to user likes.
+    Provides a paginated list of the authenticated user's liked destinations.
+    """
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
+        """
+        GET method to retrieve paginated list of user likes.
+        
+        Parameters:
+            request: HTTP GET request from authenticated user
+        
+        Returns:
+            Paginated response with user likes
+        """
         likes = Like.objects.filter(user=request.user).select_related('location').order_by('-created_at')
         
         paginator = PageNumberPagination()
         paginator.page_size = 10
         result_page = paginator.paginate_queryset(likes, request)
         
-        # 결과 포맷팅
+        # Format results
         results = []
         for like in result_page:
             results.append({
@@ -1131,25 +1392,223 @@ class UserLikesView(APIView):
 @permission_classes([AllowAny])
 def most_loved_locations(request):
     """
-    가장 좋아요를 많이 받은 여행지 10개를 반환합니다.
+    API endpoint to retrieve the top 10 most liked destinations.
+    Returns destinations ranked by like count with additional rating information.
+    
+    Parameters:
+        request: HTTP GET request
+    
+    Returns:
+        Response with list of top 10 most liked destinations
     """
-    # 좋아요 수를 기준으로 여행지를 정렬하고 상위 10개를 선택
-    # Location 모델에 이미 likes_count 필드가 있으므로 직접 사용
+    # Sort locations by likes_count and select top 10
+    # Using likes_count field that's already in the Location model
     locations = Location.objects.order_by('-likes_count')[:10]
     
-    # 각 여행지에 대한 추가 정보 계산
+    # Calculate additional information for each location
     result = []
     for location in locations:
-        # 평균 평점 계산
+        # Calculate average rating
         reviews = location.reviews.all()
         average_rating = None
         if reviews.exists():
             average_rating = sum(review.rating for review in reviews) / reviews.count()
         
-        # 위치 정보 생성
+        # Create location data
         location_data = LocationSerializer(location).data
         location_data['average_rating'] = average_rating
         
         result.append(location_data)
     
     return Response(result)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def nearby_locations(request):
+    """
+    API endpoint to find destinations near a specified geographic location.
+    Uses Haversine formula to calculate distances between coordinates.
+    
+    Parameters:
+        request: HTTP POST request with:
+            - latitude: User's latitude coordinate
+            - longitude: User's longitude coordinate
+            - radius: Search radius in kilometers (default: 50.0)
+            - limit: Maximum number of results to return (default: 20)
+    
+    Returns:
+        Response with list of nearby destinations sorted by distance
+    """
+    # User location information
+    user_lat = request.data.get('latitude')
+    user_lon = request.data.get('longitude')
+    radius = float(request.data.get('radius', 50.0))  # Default radius 50km
+    limit = int(request.data.get('limit', 20))  # Limit results (default 20)
+    
+    # If latitude/longitude not provided
+    if user_lat is None or user_lon is None:
+        return Response({"error": "Latitude and longitude are required."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user_lat = float(user_lat)
+        user_lon = float(user_lon)
+    except ValueError:
+        return Response({"error": "Latitude and longitude must be numbers."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Haversine formula for distance calculation
+    def haversine_distance(lat1, lon1, lat2, lon2):
+        """
+        Calculates distance between two latitude/longitude coordinates (in km)
+        
+        Parameters:
+            lat1, lon1: First coordinate pair
+            lat2, lon2: Second coordinate pair
+            
+        Returns:
+            Distance in kilometers
+        """
+        # Earth radius (km)
+        R = 6371.0
+        
+        # Convert to radians
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
+        
+        # Latitude, longitude differences
+        dlat = lat2_rad - lat1_rad
+        dlon = lon2_rad - lon1_rad
+        
+        # Haversine formula
+        a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        distance = R * c
+        
+        return distance
+    
+    # Approximate distance per degree
+    lat_km = 111.0
+    lng_km = 111.0 * math.cos(math.radians(user_lat))
+    
+    # Convert radius to latitude/longitude difference (approximate filtering range)
+    lat_delta = radius / lat_km
+    lng_delta = radius / lng_km
+    
+    # Filter by approximate location (for performance optimization)
+    locations = Location.objects.filter(
+        latitude__isnull=False,
+        longitude__isnull=False,
+        latitude__gte=user_lat - lat_delta,
+        latitude__lte=user_lat + lat_delta,
+        longitude__gte=user_lon - lng_delta,
+        longitude__lte=user_lon + lng_delta
+    )
+    
+    # Calculate exact distance and sort
+    nearby_locations = []
+    for location in locations:
+        distance = haversine_distance(
+            user_lat, user_lon, 
+            location.latitude, location.longitude
+        )
+        
+        if distance <= radius:
+            location_data = LocationSerializer(location).data
+            location_data['distance'] = round(distance, 2)  # Round to 2 decimal places
+            nearby_locations.append(location_data)
+    
+    # Sort by distance
+    nearby_locations.sort(key=lambda x: x['distance'])
+    
+    # Limit number of results
+    nearby_locations = nearby_locations[:limit]
+    
+    return Response(nearby_locations)
+
+# add new utility function for extracting countries from keywords
+def extract_countries_from_keywords(keywords):
+    """
+    Extract countries from keyword list.
+    """
+    # List of common country names (stored in lowercase)
+    common_countries = {
+        'vietnam', 'thailand', 'japan', 'korea', 'china', 'malaysia', 'indonesia', 
+        'singapore', 'philippines', 'australia', 'new zealand', 'usa', 'america', 
+        'canada', 'mexico', 'brazil', 'peru', 'argentina', 'chile', 'uk', 'england', 
+        'france', 'italy', 'spain', 'germany', 'netherlands', 'turkey', 'russia', 
+        'india', 'egypt', 'morocco', 'south africa', 'greece', 'switzerland'
+    }
+    
+    # Process country name variations
+    country_aliases = {
+        'american': 'usa',
+        'british': 'uk',
+        'english': 'uk',
+        'french': 'france',
+        'italian': 'italy',
+        'spanish': 'spain',
+        'german': 'germany',
+        'dutch': 'netherlands',
+        'turkish': 'turkey',
+        'russian': 'russia',
+        'indian': 'india',
+        'egyptian': 'egypt',
+        'thai': 'thailand',
+        'vietnamese': 'vietnam',
+        'japanese': 'japan',
+        'south_korean': 'south_korea',
+        'chinese': 'china',
+        'malaysian': 'malaysia',
+        'indonesian': 'indonesia'
+    }
+    
+    found_countries = []
+    
+    for keyword in keywords:
+        keyword_lower = keyword.lower()
+        
+        # Direct match
+        if keyword_lower in common_countries:
+            found_countries.append(keyword_lower)
+        
+        # Alias match
+        elif keyword_lower in country_aliases:
+            found_countries.append(country_aliases[keyword_lower])
+    
+    return found_countries
+
+def extract_countries_from_text(text):
+    """
+    Extract countries from text.
+    """
+    # Include country name variations
+    countries_with_variants = {
+        'vietnam': ['vietnam', 'vietnamese', 'hanoi', 'ho chi minh'],
+        'thailand': ['thailand', 'thai', 'bangkok', 'phuket'],
+        'japan': ['japan', 'japanese', 'tokyo', 'kyoto', 'osaka'],
+        'south_korea': ['south_korea', 'south_korean', 'seoul', 'busan'],
+        'china': ['china', 'chinese', 'beijing', 'shanghai'],
+        'malaysia': ['malaysia', 'malaysian', 'kuala lumpur', 'penang'],
+        'indonesia': ['indonesia', 'indonesian', 'bali', 'jakarta'],
+        'singapore': ['singapore', 'singaporean'],
+        'philippines': ['philippines', 'filipino', 'manila', 'cebu'],
+        'australia': ['australia', 'australian', 'sydney', 'melbourne'],
+        'usa': ['usa', 'america', 'american', 'united states', 'new york', 'los angeles'],
+        'uk': ['uk', 'britain', 'british', 'england', 'london'],
+        'france': ['france', 'french', 'paris', 'nice'],
+        'italy': ['italy', 'italian', 'rome', 'venice', 'milan'],
+        'spain': ['spain', 'spanish', 'madrid', 'barcelona'],
+        'germany': ['germany', 'german', 'berlin', 'munich']
+    }
+    
+    found_countries = []
+    text_lower = text.lower()
+    
+    for country, variants in countries_with_variants.items():
+        for variant in variants:
+            if variant in text_lower:
+                found_countries.append(country)
+                break  # Add only once if a country variant is found
+    
+    return found_countries

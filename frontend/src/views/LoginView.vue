@@ -1,7 +1,10 @@
 <template>
+  <!-- Login page container with gradient background -->
   <div class="login-container">
+    <!-- Login form card box -->
     <div class="login-box">
       <h2>Welcome Back</h2>
+      <!-- Login form with username and password inputs -->
       <form @submit.prevent="login" class="login-form">
         <div class="form-group">
           <label>Username</label>
@@ -15,7 +18,9 @@
 
         <button type="submit" class="submit-btn">Sign In</button>
       </form>
+      <!-- Error message display area -->
       <p v-if="errorMessage" class="message error">{{ errorMessage }}</p>
+      <!-- Registration link for new users -->
       <div class="register-link">
         Don't have an account? <router-link to="/register">Register here</router-link>
       </div>
@@ -26,15 +31,25 @@
 <script>
 import axios from 'axios';
 
+/**
+ * Login View Component
+ * Provides authentication functionality for users to sign in
+ * Handles form submission, JWT token storage, and error states
+ */
 export default {
   data() {
     return {
-      username: '',
-      password: '',
-      errorMessage: ''
+      username: '', // Username input field
+      password: '', // Password input field
+      errorMessage: '' // Error message for failed login attempts
     };
   },
   methods: {
+    /**
+     * Handle login form submission
+     * Authenticates user with the server and stores JWT tokens
+     * Redirects to home page on success, displays error on failure
+     */
     async login() {
       try {
         const response = await axios.post('/api/accounts/login/', {
@@ -44,23 +59,23 @@ export default {
           headers: { 'Content-Type': 'application/json' }
         });
 
+        // Store authentication tokens in localStorage
         localStorage.setItem('access_token', response.data.access);
         localStorage.setItem('refresh_token', response.data.refresh);
 
+        // Store username if available
         if (response.data.username) {
           localStorage.setItem('username', response.data.username);
         }
+        
+        // Trigger auth state change event for other components
         document.dispatchEvent(new Event('auth-changed'));
+        
+        // Redirect to home page
         this.$router.push('/');
         
       } catch (error) {
-        console.error("Login failed:", error);
         this.errorMessage = "Invalid username or password. Please try again.";
-
-        if (error.response) {
-          console.error("Server response status:", error.response.status);
-          console.error("Server response data:", error.response.data);
-        }
       }
     }
   }
@@ -68,6 +83,7 @@ export default {
 </script>
 
 <style scoped>
+/* Main container with gradient background */
 .login-container {
   min-height: 100vh;
   display: flex;
@@ -77,6 +93,7 @@ export default {
   padding: 20px;
 }
 
+/* Login form card styling */
 .login-box {
   background: white;
   padding: 40px;
@@ -86,6 +103,7 @@ export default {
   max-width: 400px;
 }
 
+/* Login form heading */
 h2 {
   color: #2d3748;
   text-align: center;
@@ -94,24 +112,28 @@ h2 {
   font-weight: 600;
 }
 
+/* Form layout styling */
 .login-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
+/* Form group container for inputs */
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+/* Form label styling */
 label {
   color: #4a5568;
   font-size: 14px;
   font-weight: 500;
 }
 
+/* Text input styling */
 input[type="text"],
 input[type="password"] {
   padding: 12px;
@@ -121,6 +143,7 @@ input[type="password"] {
   transition: border-color 0.2s;
 }
 
+/* Focus state for text inputs */
 input[type="text"]:focus,
 input[type="password"]:focus {
   outline: none;
@@ -128,6 +151,7 @@ input[type="password"]:focus {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+/* Submit button styling */
 .submit-btn {
   background: #667eea;
   color: white;
@@ -141,10 +165,12 @@ input[type="password"]:focus {
   margin-top: 20px;
 }
 
+/* Submit button hover state */
 .submit-btn:hover {
   background: #5a67d8;
 }
 
+/* Message container styling */
 .message {
   margin-top: 20px;
   padding: 12px;
@@ -153,11 +179,13 @@ input[type="password"]:focus {
   font-size: 14px;
 }
 
+/* Error message styling */
 .error {
   background: #fed7d7;
   color: #c53030;
 }
 
+/* Registration link container */
 .register-link {
   margin-top: 20px;
   text-align: center;
@@ -165,16 +193,19 @@ input[type="password"]:focus {
   font-size: 14px;
 }
 
+/* Registration link styling */
 .register-link a {
   color: #667eea;
   text-decoration: none;
   font-weight: 500;
 }
 
+/* Registration link hover state */
 .register-link a:hover {
   text-decoration: underline;
 }
 
+/* Responsive design for smaller screens */
 @media (max-width: 640px) {
   .login-box {
     padding: 20px;
